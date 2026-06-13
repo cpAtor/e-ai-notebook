@@ -121,6 +121,7 @@ input:focus {
 }
 
 .section-card {
+  margin-bottom: 1.5rem;
   padding: clamp(1rem, 3vw, 2rem);
 }
 
@@ -158,7 +159,7 @@ input:focus {
 
 .section-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 0.75rem;
   align-items: center;
   border: 1px solid rgba(23, 32, 51, 0.1);
@@ -184,10 +185,53 @@ input:focus {
   color: #4d5871;
 }
 
+.page-list {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0;
+  margin: 2rem 0 0;
+  list-style: none;
+}
+
+.page-row,
+.page-canvas {
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: #ffffff;
+  padding: 1rem;
+}
+
+.page-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-row div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.page-row span,
+.page-canvas p {
+  color: #4d5871;
+}
+
+.page-canvas {
+  margin-top: 2rem;
+}
+
+.page-canvas h3 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
 @media (max-width: 720px) {
   .hero__header,
   .section-card__header,
   .section-row,
+  .page-row,
   .add-section-form div {
     grid-template-columns: 1fr;
   }
@@ -200,5 +244,9 @@ input:focus {
   .privacy-badge,
   .section-count {
     width: fit-content;
+  }
+
+  .page-row {
+    display: grid;
   }
 }

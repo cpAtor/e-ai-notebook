@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addBlankPage,
   addSection,
   createStarterNotebook,
   removeSection,
@@ -41,5 +42,33 @@ describe("Notebook Sections", () => {
       "System Design",
       "Behavioral"
     ]);
+  });
+
+  it("creates blank Pages with Page Type unset and removes them with their Section", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+
+    expect(notebookWithPage.pages).toEqual([
+      {
+        id: "page_dsa",
+        sectionId: dsa.id,
+        title: "Untitled Page",
+        pageType: null
+      }
+    ]);
+
+    expect(removeSection(notebookWithPage, dsa.id).pages).toEqual([]);
+  });
+
+  it("rejects blank Pages for unknown Sections", () => {
+    expect(() =>
+      addBlankPage(createStarterNotebook(), "section_missing", "page_missing")
+    ).toThrow("Cannot create a Page in an unknown Section.");
   });
 });
