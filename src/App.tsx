@@ -480,6 +480,18 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
               shell bundles its runtime assets locally and makes no network
               calls until you explicitly configure a connected feature.
             </p>
+            <aside
+              className="privacy-note"
+              aria-label="Local browser storage and backup guidance"
+            >
+              <strong>Stored in local browser storage by default.</strong>
+              <span>
+                Your Notebook stays in this browser unless you export it or
+                configure a connected feature. Browser storage is not
+                server-grade encrypted storage, so use Notebook Export for
+                backups rather than expecting cloud sync.
+              </span>
+            </aside>
           </div>
           <span className="privacy-badge" aria-label="Notebook privacy mode">
             Private Notebook

@@ -58,6 +58,11 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
     ).toBeInTheDocument();
     expect(screen.getByText("Private Notebook")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Local browser storage and backup guidance")
+    ).toHaveTextContent(
+      /Stored in local browser storage by default\.\s*Your Notebook stays in this browser unless you export it or configure a connected feature\. Browser storage is not server-grade encrypted storage, so use Notebook Export for backups rather than expecting cloud sync\./
+    );
     expect(screen.getByDisplayValue("DSA")).toBeInTheDocument();
     expect(screen.getByDisplayValue("System Design")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Research")).toBeInTheDocument();
