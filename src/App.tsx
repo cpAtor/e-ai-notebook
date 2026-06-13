@@ -33,7 +33,7 @@ const readTitle = (form: HTMLFormElement): string => {
 function App() {
   const [sections, setSections] = useState<Section[]>(starterSections);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
-  const nextCustomSection = useRef(1);
+  const nextCustomSectionId = useRef(1);
 
   const addSection = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -46,7 +46,7 @@ function App() {
     setSections((currentSections) => [
       ...currentSections,
       {
-        id: `custom-${nextCustomSection.current++}`,
+        id: `custom-${nextCustomSectionId.current++}`,
         title,
         prompt: 'Add notes, links, and practice items for this custom Section.',
       },
