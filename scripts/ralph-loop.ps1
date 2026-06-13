@@ -1,10 +1,11 @@
 param(
-    [int]$ThrottleLimit = 4,
+    [int]$ThrottleLimit = 1,
     [int]$Limit = 200,
     [string]$ReadyForAgentLabel = "ready-for-agent",
     [string]$ReadyForHumanLabel = "ready-for-human",
     [string]$ExcludeTitlePattern = "^PRD:",
-    [string]$DispatchMarker = "<!-- ralph-loop:copilot-dispatched -->",
+    [string]$PromptPath = "ralph\prompt.md",
+    [switch]$RequireApproval,
     [switch]$Once,
     [switch]$DryRun
 )
@@ -114,12 +115,6 @@ function Test-HasLabel {
     return $labelNames -contains $Label
 }
 
-function Test-IsDispatched {
-    param($Issue, [string]$DispatchMarker)
-
-    return @($Issue.comments | Where-Object { $_.body -like "*$DispatchMarker*" }).Count -gt 0
-}
-
 function Get-OpenIssuesByLabel {
     param([string]$Label, [int]$Limit)
 
@@ -133,7 +128,7 @@ function Get-OpenIssuesByLabel {
         "--limit",
         "$Limit",
         "--json",
-        "number,title,body,labels,id,url,comments"
+        "number,title,body,labels,id,url"
     ))
 }
 
@@ -188,7 +183,7 @@ function Get-CandidateIssues {
         "--limit",
         "$Limit",
         "--json",
-        "number,title,body,labels,id,url,comments"
+        "number,title,body,labels,id,url"
     )
     $hitlIssues = Get-OpenIssuesByLabel -Label $ReadyForHumanLabel -Limit $Limit
     $issuesByNumber = @{}
@@ -245,15 +240,6 @@ function Get-CandidateIssues {
             continue
         }
 
-        if (Test-IsDispatched -Issue $issue -DispatchMarker $DispatchMarker) {
-            $skipped += [pscustomobject]@{
-                Number = $issue.number
-                Reason = "Already dispatched to Copilot"
-                Title  = $issue.title
-            }
-            continue
-        }
-
         $ready += $issue
     }
 
@@ -286,16 +272,15 @@ function Stop-ForHitl {
     exit 2
 }
 
-function Get-CopilotDispatchBody {
-    param($Issue, [string]$DispatchMarker)
+function Get-CopilotPrompt {
+    param($Issue, [string]$PromptPath)
 
     return @"
-$DispatchMarker
-@copilot please implement issue #$($Issue.number): $($Issue.title).
+Read and follow @$PromptPath as the base instruction for this Ralph loop run.
 
-Before coding, read and follow `ralph/prompt.md` as the base instruction for this run.
+Implement issue #$($Issue.number): $($Issue.title)
 
-Only work on issue #$($Issue.number). If this issue cannot be completed, leave a comment explaining the blocker instead of closing it.
+Only work on issue #$($Issue.number). Pull the issue body and comments with gh before coding. Do not work on dependent issues or HITL issues.
 "@
 }
 
@@ -303,7 +288,8 @@ function Invoke-CopilotBatch {
     param(
         [object[]]$Issues,
         [int]$ThrottleLimit,
-        [string]$DispatchMarker,
+        [string]$PromptPath,
+        [switch]$RequireApproval,
         [switch]$DryRun
     )
 
@@ -317,23 +303,38 @@ function Invoke-CopilotBatch {
     while ($queue.Count -gt 0 -or $running.Count -gt 0) {
         while ($queue.Count -gt 0 -and $running.Count -lt $ThrottleLimit) {
             $issue = $queue.Dequeue()
-            $body = Get-CopilotDispatchBody -Issue $issue -DispatchMarker $DispatchMarker
+            $prompt = Get-CopilotPrompt -Issue $issue -PromptPath $PromptPath
 
             if ($DryRun) {
-                Write-Host "DRY RUN dispatch issue #$($issue.number): @copilot implementation request"
+                Write-Host "DRY RUN local Copilot issue #$($issue.number): copilot -p <prompt>"
                 continue
             }
 
-            Write-Host "Dispatching issue #$($issue.number) to Copilot: $($issue.title)"
-            $running += Start-Job -Name "issue-$($issue.number)" -ArgumentList $body, $issue.number, (Get-Location).Path -ScriptBlock {
-                param($Body, $IssueNumber, $RepositoryPath)
+            Write-Host "Running local Copilot for issue #$($issue.number): $($issue.title)"
+            $running += Start-Job -Name "issue-$($issue.number)" -ArgumentList $prompt, $issue.number, (Get-Location).Path, [bool]$RequireApproval -ScriptBlock {
+                param($Prompt, $IssueNumber, $RepositoryPath, $RequireApproval)
 
                 Set-Location $RepositoryPath
-                gh issue comment $IssueNumber --body $Body
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Issue #$IssueNumber Copilot dispatch failed with exit code $LASTEXITCODE"
+                $arguments = @("-C", $RepositoryPath, "--allow-all", "--no-ask-user", "--autopilot", "-p", $Prompt)
+                if ($RequireApproval) {
+                    $arguments = @("-C", $RepositoryPath, "--no-ask-user", "--autopilot", "-p", $Prompt)
                 }
-                Write-Host "Dispatched issue #$IssueNumber to Copilot."
+
+                & copilot @arguments
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Issue #$IssueNumber local Copilot run failed with exit code $LASTEXITCODE"
+                }
+
+                $state = gh issue view $IssueNumber --json state --jq .state
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Issue #$IssueNumber completed, but its GitHub state could not be checked."
+                }
+
+                if ($state -ne "CLOSED") {
+                    throw "Issue #$IssueNumber local Copilot run exited successfully, but the issue is still open. Close it or fix the blocker before continuing."
+                }
+
+                Write-Host "Issue #$IssueNumber is closed. Dependencies may unblock on the next loop."
             }
         }
 
@@ -376,13 +377,14 @@ do {
         break
     }
 
-    Write-Host "`nDispatching $($batch.Ready.Count) unblocked AFK issue(s) to Copilot:"
+    Write-Host "`nRunning local Copilot for $($batch.Ready.Count) unblocked AFK issue(s):"
     $batch.Ready | Sort-Object number | Format-Table number, title, url -AutoSize
 
     Invoke-CopilotBatch `
         -Issues @($batch.Ready) `
         -ThrottleLimit $ThrottleLimit `
-        -DispatchMarker $DispatchMarker `
+        -PromptPath $PromptPath `
+        -RequireApproval:$RequireApproval `
         -DryRun:$DryRun
 
     if ($DryRun -or $Once) {
