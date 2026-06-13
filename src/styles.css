@@ -567,6 +567,14 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.assistant-bubble {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  box-shadow: 0 18px 50px rgba(23, 32, 51, 0.24);
+}
+
 .canvas-hamburger-menu {
   position: fixed;
   top: 5rem;
@@ -633,6 +641,11 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 800;
+}
+
+.settings-panel label.settings-panel__checkbox {
+  align-items: center;
+  display: flex;
 }
 
 .code-block-panel,

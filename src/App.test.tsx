@@ -178,6 +178,47 @@ describe("App", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
+  it("keeps AI affordances hidden until explicitly enabled in settings", async () => {
+    const user = userEvent.setup();
+    const firstRender = await renderApp(createStarterNotebook());
+
+    expect(
+      await screen.findByRole("heading", { name: "Default Page" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Notebook Assistant" })
+    ).not.toBeInTheDocument();
+
+    await openCommandPalette(user);
+    expect(
+      screen.queryByRole("button", { name: "Ask Notebook Assistant" })
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByLabelText("Enable AI affordances"));
+
+    expect(window.localStorage.getItem("interview_prep_notebook:ai_enabled")).toBe(
+      "true"
+    );
+    await user.click(screen.getByRole("button", { name: "Close Modal" }));
+    expect(
+      screen.getByRole("button", { name: "Notebook Assistant" })
+    ).toBeInTheDocument();
+
+    await openCommandPalette(user);
+    await user.click(screen.getByRole("button", { name: "Ask Notebook Assistant" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Notebook Assistant" })
+    ).toHaveTextContent(/does not make runtime network calls/i);
+
+    firstRender.unmount();
+    firstRender.store.close();
+    await renderApp(createStarterNotebook());
+
+    expect(
+      await screen.findByRole("button", { name: "Notebook Assistant" })
+    ).toBeInTheDocument();
+  });
+
   it("invokes search, Page switching, and Page creation from the Command Palette", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();

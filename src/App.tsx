@@ -73,6 +73,7 @@ const DEFAULT_SECTION_ID: SectionId = "section_inbox";
 const DEFAULT_PAGE_ID: PageId = "page_default";
 const LAST_OPENED_PAGE_STORAGE_KEY = "interview_prep_notebook:last_opened_page";
 const THEME_STORAGE_KEY = "interview_prep_notebook:theme";
+const AI_ENABLED_STORAGE_KEY = "interview_prep_notebook:ai_enabled";
 const defaultNotebookStore = createNotebookStore();
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   fonts: {
@@ -171,7 +172,13 @@ type BackupStatus =
   | { readonly kind: "failed"; readonly message: string };
 
 type ThemePreference = "system" | "light" | "dark";
-type CanvasModalKind = "search" | "pages" | "backup" | "settings" | "shortcuts";
+type CanvasModalKind =
+  | "search"
+  | "pages"
+  | "backup"
+  | "settings"
+  | "shortcuts"
+  | "assistant";
 
 interface RecoveryState {
   readonly message: string;
@@ -209,6 +216,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [themePreference, setThemePreference] = useState<ThemePreference>(
     loadThemePreference
   );
+  const [isAiEnabled, setIsAiEnabled] = useState(loadAiEnabledPreference);
 
   useEffect(() => {
     let isCurrent = true;
@@ -331,6 +339,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
     document.documentElement.dataset.theme = resolvedTheme(themePreference);
   }, [themePreference]);
+
+  useEffect(() => {
+    window.localStorage.setItem(AI_ENABLED_STORAGE_KEY, String(isAiEnabled));
+  }, [isAiEnabled]);
 
   const activePage = useMemo(() => {
     if (notebook === null || route.kind === "notebook") {
@@ -998,7 +1010,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           searchQuery={searchQuery}
           searchResults={searchResults}
           themePreference={themePreference}
+          isAiEnabled={isAiEnabled}
           onThemePreferenceChange={setThemePreference}
+          onAiEnabledChange={setIsAiEnabled}
           onNotebookExport={handleNotebookExport}
           onNotebookImport={handleNotebookImport}
           onSearchQueryChange={setSearchQuery}
@@ -1158,7 +1172,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             searchQuery={searchQuery}
             searchResults={searchResults}
             themePreference={themePreference}
+            isAiEnabled={isAiEnabled}
             onThemePreferenceChange={setThemePreference}
+            onAiEnabledChange={setIsAiEnabled}
             onNotebookExport={handleNotebookExport}
             onNotebookImport={handleNotebookImport}
             onSearchQueryChange={setSearchQuery}
@@ -1442,7 +1458,9 @@ interface ActivePageViewProps {
   readonly searchQuery: string;
   readonly searchResults: readonly SearchResult[];
   readonly themePreference: ThemePreference;
+  readonly isAiEnabled: boolean;
   readonly onThemePreferenceChange: (preference: ThemePreference) => void;
+  readonly onAiEnabledChange: (enabled: boolean) => void;
   readonly onNotebookExport: () => void;
   readonly onNotebookImport: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onSearchQueryChange: (query: string) => void;
@@ -1515,7 +1533,9 @@ const ActivePageView = ({
   searchQuery,
   searchResults,
   themePreference,
+   isAiEnabled,
   onThemePreferenceChange,
+  onAiEnabledChange,
   onNotebookExport,
   onNotebookImport,
   onSearchQueryChange,
@@ -1627,6 +1647,7 @@ const ActivePageView = ({
       ) : null}
       {isCommandPaletteOpen ? (
         <CommandPalette
+          isAiEnabled={isAiEnabled}
           onClose={() => setIsCommandPaletteOpen(false)}
           onCreatePage={() => {
             onPageCreate(activePage.section.id);
@@ -1649,6 +1670,11 @@ const ActivePageView = ({
               setActiveModal(null);
             }}
           />
+        </CanvasModal>
+      ) : null}
+      {activeModal === "assistant" ? (
+        <CanvasModal title="Notebook Assistant" onClose={() => setActiveModal(null)}>
+          <NotebookAssistantPanel />
         </CanvasModal>
       ) : null}
       {activeModal === "pages" ? (
@@ -1682,7 +1708,9 @@ const ActivePageView = ({
           <SettingsPanel
             activePage={activePage.page}
             themePreference={themePreference}
+            isAiEnabled={isAiEnabled}
             onPageRename={onPageRename}
+            onAiEnabledChange={onAiEnabledChange}
             onThemePreferenceChange={onThemePreferenceChange}
           />
         </CanvasModal>
@@ -1725,6 +1753,9 @@ const ActivePageView = ({
         highlightedCanvasItemId={highlightedCanvasItemId}
         onInspect={setInspectedCanvasItemId}
       />
+      {isAiEnabled ? (
+        <AssistantBubble onOpen={() => setActiveModal("assistant")} />
+      ) : null}
       {inspectedCanvasItem !== null ? (
         <ItemInspector
           canvasItem={inspectedCanvasItem}
@@ -1791,12 +1822,14 @@ const CanvasHamburgerMenu = ({
 );
 
 interface CommandPaletteProps {
+  readonly isAiEnabled: boolean;
   readonly onClose: () => void;
   readonly onCreatePage: () => void;
   readonly onModalOpen: (modal: CanvasModalKind) => void;
 }
 
 const CommandPalette = ({
+  isAiEnabled,
   onClose,
   onCreatePage,
   onModalOpen
@@ -1821,6 +1854,11 @@ const CommandPalette = ({
       <button type="button" onClick={() => onModalOpen("settings")}>
         Settings
       </button>
+      {isAiEnabled ? (
+        <button type="button" onClick={() => onModalOpen("assistant")}>
+          Ask Notebook Assistant
+        </button>
+      ) : null}
       <button type="button" onClick={() => onModalOpen("shortcuts")}>
         Shortcuts
       </button>
@@ -1902,14 +1940,18 @@ const PageSwitcher = ({
 interface SettingsPanelProps {
   readonly activePage: Page;
   readonly themePreference: ThemePreference;
+  readonly isAiEnabled: boolean;
   readonly onPageRename: (pageId: PageId, title: string) => void;
+  readonly onAiEnabledChange: (enabled: boolean) => void;
   readonly onThemePreferenceChange: (preference: ThemePreference) => void;
 }
 
 const SettingsPanel = ({
   activePage,
   themePreference,
+  isAiEnabled,
   onPageRename,
+  onAiEnabledChange,
   onThemePreferenceChange
 }: SettingsPanelProps) => {
   const [pageTitleDraft, setPageTitleDraft] = useState(activePage.title);
@@ -1941,13 +1983,42 @@ const SettingsPanel = ({
           }}
         />
       </label>
+      <label className="settings-panel__checkbox" htmlFor="ai-enabled-setting">
+        <input
+          id="ai-enabled-setting"
+          type="checkbox"
+          checked={isAiEnabled}
+          onChange={(event) => onAiEnabledChange(event.target.checked)}
+        />
+        Enable AI affordances
+      </label>
       <p>
         Notebook material remains private by default; connected features stay out
         of the Drawing Screen until explicitly configured.
       </p>
+      <p>
+        Automatic image and screenshot summaries stay disabled unless a future
+        explicit summarization setting enables them.
+      </p>
     </div>
   );
 };
+
+const AssistantBubble = ({ onOpen }: { readonly onOpen: () => void }) => (
+  <button type="button" className="assistant-bubble" onClick={onOpen}>
+    Notebook Assistant
+  </button>
+);
+
+const NotebookAssistantPanel = () => (
+  <div className="assistant-panel">
+    <p>
+      The Notebook Assistant is available because AI affordances are enabled.
+      This MVP shell does not make runtime network calls until a provider is
+      explicitly configured.
+    </p>
+  </div>
+);
 
 const ShortcutsPanel = () => (
   <div className="shortcuts-panel">
@@ -3040,6 +3111,9 @@ const loadThemePreference = (): ThemePreference => {
 
   return "system";
 };
+
+const loadAiEnabledPreference = (): boolean =>
+  window.localStorage.getItem(AI_ENABLED_STORAGE_KEY) === "true";
 
 const resolvedTheme = (preference: ThemePreference): "light" | "dark" => {
   if (preference !== "system") {
