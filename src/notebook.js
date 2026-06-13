@@ -3,6 +3,7 @@ const STARTER_SECTIONS = [
   ['section-system-design', 'System Design'],
   ['section-research', 'Research'],
 ];
+let fallbackIdCounter = 0;
 
 export function createInitialNotebook(now = new Date().toISOString()) {
   return {
@@ -76,5 +77,6 @@ function createId(prefix) {
     return `${prefix}-${globalThis.crypto.randomUUID()}`;
   }
 
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  fallbackIdCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${fallbackIdCounter}`;
 }
