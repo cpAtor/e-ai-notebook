@@ -12,6 +12,7 @@ import {
 export const NOTEBOOK_SCHEMA_VERSION = 2;
 export const DEFAULT_NOTEBOOK_DATABASE_NAME = "interview_prep_notebook";
 const NOTEBOOK_RECORD_ID: NotebookId = "notebook_private_interview_prep";
+const NOTEBOOK_EXPORT_FILE_NAME = "interview-prep-notebook-export.json";
 
 const sectionIdSchema = z.custom<SectionId>(
   (value) => typeof value === "string" && value.startsWith("section_")
@@ -129,7 +130,20 @@ const notebookRecordSchemaV2 = z.object({
   notebook: notebookSchemaV2
 });
 
+const notebookExportSchemaV1 = z.object({
+  schemaVersion: z.literal(1),
+  exportedAt: z.string().datetime(),
+  notebook: notebookSchemaV1
+});
+
+const notebookExportSchemaV2 = z.object({
+  schemaVersion: z.literal(NOTEBOOK_SCHEMA_VERSION),
+  exportedAt: z.string().datetime(),
+  notebook: notebookSchemaV2
+});
+
 type NotebookRecordV2 = z.infer<typeof notebookRecordSchemaV2>;
+export type NotebookExport = z.infer<typeof notebookExportSchemaV2>;
 
 class NotebookDatabase extends Dexie {
   notebooks!: Table<NotebookRecordV2, NotebookId>;
@@ -180,6 +194,39 @@ export const deleteNotebookDatabase = async (
   await Dexie.delete(databaseName);
 };
 
+export const createNotebookExport = (
+  notebook: Notebook,
+  exportedAt = new Date()
+): NotebookExport =>
+  notebookExportSchemaV2.parse({
+    schemaVersion: NOTEBOOK_SCHEMA_VERSION,
+    exportedAt: exportedAt.toISOString(),
+    notebook
+  });
+
+export const serializeNotebookExport = (
+  notebook: Notebook,
+  exportedAt?: Date
+): string => JSON.stringify(createNotebookExport(notebook, exportedAt), null, 2);
+
+export const parseNotebookExport = (rawExport: string): Notebook => {
+  const payload = JSON.parse(rawExport) as unknown;
+  const versionedExport = z
+    .object({ schemaVersion: z.union([z.literal(1), z.literal(2)]) })
+    .passthrough()
+    .parse(payload);
+
+  if (versionedExport.schemaVersion === 1) {
+    const v1Export = notebookExportSchemaV1.parse(payload);
+
+    return migrateNotebookV1ToCurrent(v1Export.notebook);
+  }
+
+  return notebookExportSchemaV2.parse(payload).notebook;
+};
+
+export const notebookExportFileName = (): string => NOTEBOOK_EXPORT_FILE_NAME;
+
 const parseNotebookRecord = (record: unknown): NotebookRecordV2 => {
   const versionedRecord = z
     .object({ schemaVersion: z.union([z.literal(1), z.literal(2)]) })
@@ -189,15 +236,19 @@ const parseNotebookRecord = (record: unknown): NotebookRecordV2 => {
   if (versionedRecord.schemaVersion === 1) {
     const v1Record = notebookRecordSchemaV1.parse(record);
 
-    return toNotebookRecord({
-      ...v1Record.notebook,
-      canvasItems: [],
-      canvasRegions: []
-    });
+    return toNotebookRecord(migrateNotebookV1ToCurrent(v1Record.notebook));
   }
 
   return notebookRecordSchemaV2.parse(record);
 };
+
+const migrateNotebookV1ToCurrent = (
+  notebook: z.infer<typeof notebookSchemaV1>
+): Notebook => ({
+  ...notebook,
+  canvasItems: [],
+  canvasRegions: []
+});
 
 const toNotebookRecord = (notebook: Notebook): NotebookRecordV2 =>
   notebookRecordSchemaV2.parse({

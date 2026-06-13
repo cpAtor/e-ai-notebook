@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   addCodeBlockCanvasItem,
+  addDiagramCanvasItem,
   addImageCanvasItem,
   addBlankPage,
+  addLinkCardCanvasItem,
   createStarterNotebook,
   replacePageCanvasItems,
   replacePageTextCanvasItems,
@@ -13,6 +15,7 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  serializeNotebookExport,
   type NotebookStore
 } from "./persistence/notebookStorage";
 
@@ -700,6 +703,106 @@ describe("App", () => {
 
     expect(
       await screen.findByLabelText("Highlighted Image Item Canvas Region")
+    ).toBeInTheDocument();
+  });
+
+  it("exports and imports a Notebook backup while rebuilding Search Results", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const research = starterNotebook.sections.find(
+      (section) => section.title === "Research"
+    );
+
+    if (research === undefined) {
+      throw new Error("Expected seeded Research Section.");
+    }
+
+    const notebookWithPage = addBlankPage(
+      starterNotebook,
+      research.id,
+      "page_research"
+    );
+    const notebookWithText = replacePageTextCanvasItems(
+      notebookWithPage,
+      "page_research",
+      [
+        {
+          id: "canvas_item_note",
+          pageId: "page_research",
+          type: "text",
+          text: "Consistent hashing notes",
+          tags: ["distributed systems"]
+        }
+      ],
+      [
+        {
+          pageId: "page_research",
+          canvasItemId: "canvas_item_note",
+          bounds: { x: 12, y: 24, width: 240, height: 80 }
+        }
+      ]
+    );
+    const notebookWithLink = addLinkCardCanvasItem(
+      notebookWithText,
+      "page_research",
+      "canvas_item_link",
+      "https://example.com/cache",
+      "Cache reference",
+      ["reading"]
+    );
+    const notebookWithCode = addCodeBlockCanvasItem(
+      notebookWithLink,
+      "page_research",
+      "canvas_item_code",
+      "function shard(key) { return hash(key) % nodes.length; }",
+      ["sharding"]
+    );
+    const notebookWithImage = addImageCanvasItem(
+      notebookWithCode,
+      "page_research",
+      "canvas_item_image",
+      "data:image/png;base64,Y2FjaGU=",
+      "image/png",
+      "Cache topology",
+      ["topology"]
+    );
+    const importedNotebook = addDiagramCanvasItem(
+      notebookWithImage,
+      "page_research",
+      "canvas_item_diagram",
+      "sticky-note",
+      "Eviction policy reminder",
+      ["eviction"]
+    );
+
+    await renderApp();
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+
+    const exportJson = await screen.findByLabelText("Notebook Export JSON");
+    const exportJsonValue = (exportJson as HTMLTextAreaElement).value;
+
+    expect(exportJsonValue).toContain('"canvasItems": []');
+    expect(exportJsonValue).not.toContain("localIndex");
+
+    await user.upload(
+      screen.getByLabelText("Import Notebook Export"),
+      new File([serializeNotebookExport(importedNotebook)], "notebook.json", {
+        type: "application/json"
+      })
+    );
+
+    expect(
+      await screen.findByText(/Search uses a freshly rebuilt Local Index/)
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "eviction");
+
+    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
+    expect(screen.getByText("Matched Tags: #eviction")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
     ).toBeInTheDocument();
   });
 });

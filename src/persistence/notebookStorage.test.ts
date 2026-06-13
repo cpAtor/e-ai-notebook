@@ -6,13 +6,18 @@ import {
   addBlankPage,
   addLinkCardCanvasItem,
   createStarterNotebook,
-  replacePageCanvasItems
+  replacePageCanvasItems,
+  replacePageTextCanvasItems
 } from "../domain/notebook";
+import { buildLocalIndex } from "../domain/localIndex";
 import {
+  createNotebookExport,
   createNotebookStore,
   deleteNotebookDatabase,
+  parseNotebookExport,
   notebookSchemaV1,
-  notebookSchemaV2
+  notebookSchemaV2,
+  serializeNotebookExport
 } from "./notebookStorage";
 
 const databaseName = "notebook-storage-test";
@@ -231,5 +236,163 @@ describe("Notebook storage", () => {
     await expect(store.loadNotebook()).resolves.toEqual(notebookWithDrawing);
     expect(() => notebookSchemaV2.parse(notebookWithDrawing)).not.toThrow();
     store.close();
+  });
+
+  it("exports and imports all MVP Canvas Item types without stale derived state", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithText = replacePageTextCanvasItems(
+      notebookWithPage,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_trace",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Binary search invariant",
+          tags: ["arrays"]
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_trace",
+          bounds: { x: 10, y: 20, width: 240, height: 80 }
+        }
+      ]
+    );
+    const notebookWithDrawing = replacePageCanvasItems(
+      notebookWithText,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_trace",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Binary search invariant",
+          tags: ["arrays"]
+        }
+      ],
+      [
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 32,
+            y: 48,
+            rotation: 0,
+            props: {
+              segments: [{ type: "free", path: "encoded-stroke" }]
+            }
+          }
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_trace",
+          bounds: { x: 10, y: 20, width: 240, height: 80 }
+        },
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 32, y: 48, width: 120, height: 72 }
+        }
+      ]
+    );
+    const notebookWithLink = addLinkCardCanvasItem(
+      notebookWithDrawing,
+      "page_dsa",
+      "canvas_item_link",
+      "https://example.com/two-sum",
+      "Practice prompt",
+      ["practice"]
+    );
+    const notebookWithCode = addCodeBlockCanvasItem(
+      notebookWithLink,
+      "page_dsa",
+      "canvas_item_code",
+      "const seen = new Map();",
+      ["hash map"]
+    );
+    const notebookWithImage = addImageCanvasItem(
+      notebookWithCode,
+      "page_dsa",
+      "canvas_item_image",
+      "data:image/png;base64,aGVhcA==",
+      "image/png",
+      "Heap sketch",
+      ["heap"]
+    );
+    const notebookWithDiagram = addDiagramCanvasItem(
+      notebookWithImage,
+      "page_dsa",
+      "canvas_item_diagram",
+      "box",
+      "API Gateway",
+      ["system design"]
+    );
+
+    const serializedExport = serializeNotebookExport(
+      notebookWithDiagram,
+      new Date("2026-06-13T00:00:00.000Z")
+    );
+    const parsedExport = JSON.parse(serializedExport) as ReturnType<
+      typeof createNotebookExport
+    >;
+
+    expect(parsedExport).toEqual({
+      schemaVersion: 2,
+      exportedAt: "2026-06-13T00:00:00.000Z",
+      notebook: notebookWithDiagram
+    });
+    expect(parsedExport.notebook.canvasItems.map((canvasItem) => canvasItem.type)).toEqual([
+      "text",
+      "freehand-drawing",
+      "link-card",
+      "code-block",
+      "image",
+      "diagram"
+    ]);
+    expect(parsedExport.notebook.canvasRegions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ canvasItemId: "canvas_item_trace" }),
+        expect.objectContaining({ canvasItemId: "canvas_item_sketch" }),
+        expect.objectContaining({ canvasItemId: "canvas_item_link" }),
+        expect.objectContaining({ canvasItemId: "canvas_item_code" }),
+        expect.objectContaining({ canvasItemId: "canvas_item_image" }),
+        expect.objectContaining({ canvasItemId: "canvas_item_diagram" })
+      ])
+    );
+
+    const importedNotebook = parseNotebookExport(
+      JSON.stringify({
+        ...parsedExport,
+        credentials: { providerToken: "must-not-import" },
+        localIndex: [{ id: "stale:index-entry" }]
+      })
+    );
+    const rebuiltIndex = buildLocalIndex(importedNotebook);
+
+    expect(importedNotebook).toEqual(notebookWithDiagram);
+    expect(rebuiltIndex.map((entry) => entry.id)).toEqual([
+      "page:page_dsa",
+      "text:canvas_item_trace",
+      "link-card:canvas_item_link",
+      "code-block:canvas_item_code",
+      "image:canvas_item_image",
+      "diagram:canvas_item_diagram"
+    ]);
+    expect(rebuiltIndex).not.toContainEqual(
+      expect.objectContaining({ id: "stale:index-entry" })
+    );
   });
 });

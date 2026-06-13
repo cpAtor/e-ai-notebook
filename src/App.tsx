@@ -60,6 +60,9 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  notebookExportFileName,
+  parseNotebookExport,
+  serializeNotebookExport,
   type NotebookStore
 } from "./persistence/notebookStorage";
 
@@ -150,10 +153,17 @@ type SaveStatus =
       readonly unsavedNotebook: Notebook;
     };
 
+type BackupStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "success"; readonly message: string }
+  | { readonly kind: "failed"; readonly message: string };
+
 export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
+  const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
+  const [notebookExportJson, setNotebookExportJson] = useState("");
   const saveAttemptRef = useRef(0);
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
@@ -249,6 +259,79 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     if (saveStatus.kind === "failed") {
       saveNotebook(saveStatus.unsavedNotebook);
     }
+  };
+
+  const handleNotebookExport = () => {
+    if (notebook === null) {
+      return;
+    }
+
+    const exportJson = serializeNotebookExport(notebook);
+    setNotebookExportJson(exportJson);
+
+    if (typeof URL.createObjectURL === "function") {
+      const exportUrl = URL.createObjectURL(
+        new Blob([exportJson], { type: "application/json" })
+      );
+      const downloadLink = document.createElement("a");
+      downloadLink.href = exportUrl;
+      downloadLink.download = notebookExportFileName();
+      downloadLink.click();
+      URL.revokeObjectURL(exportUrl);
+    }
+
+    setBackupStatus({
+      kind: "success",
+      message:
+        "Notebook Export JSON is ready. It includes source Notebook data only; Local Index and credentials are excluded."
+    });
+  };
+
+  const handleNotebookImport = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (file === undefined) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      try {
+        if (typeof reader.result !== "string") {
+          throw new Error("Notebook Export file could not be read as text.");
+        }
+
+        const importedNotebook = parseNotebookExport(reader.result);
+        saveNotebook(importedNotebook);
+        setNotebookExportJson("");
+        setSearchQuery("");
+        setHighlightedCanvasItemId(null);
+        window.history.pushState({}, "", "/");
+        setRoute({ kind: "notebook" });
+        setBackupStatus({
+          kind: "success",
+          message:
+            "Notebook Export imported. Search uses a freshly rebuilt Local Index from the imported Notebook source data."
+        });
+      } catch (error: unknown) {
+        setBackupStatus({
+          kind: "failed",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Notebook Export could not be imported."
+        });
+      }
+    });
+    reader.addEventListener("error", () => {
+      setBackupStatus({
+        kind: "failed",
+        message:
+          reader.error?.message ?? "Notebook Export file could not be imported."
+      });
+    });
+    reader.readAsText(file);
   };
 
   const handleSectionRename = (sectionId: SectionId, title: string) => {
@@ -540,6 +623,13 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
       <SaveStatusBanner status={saveStatus} onRetry={handleSaveRetry} />
 
+      <NotebookBackupPanel
+        exportJson={notebookExportJson}
+        status={backupStatus}
+        onExport={handleNotebookExport}
+        onImport={handleNotebookImport}
+      />
+
       <section className="section-card" aria-labelledby="sections-title">
         <div className="section-card__header">
           <div>
@@ -644,6 +734,67 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     </main>
   );
 };
+
+interface NotebookBackupPanelProps {
+  readonly exportJson: string;
+  readonly status: BackupStatus;
+  readonly onExport: () => void;
+  readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+}
+
+const NotebookBackupPanel = ({
+  exportJson,
+  status,
+  onExport,
+  onImport
+}: NotebookBackupPanelProps) => (
+  <section className="section-card notebook-backup" aria-labelledby="backup-title">
+    <div className="section-card__header">
+      <div>
+        <p className="eyebrow">Notebook Export</p>
+        <h2 id="backup-title">Back up or restore this Notebook</h2>
+      </div>
+      <p className="section-count">Source data only</p>
+    </div>
+    <p>
+      Export preserves Sections, Pages, all MVP Canvas Item types, Tags, and
+      Canvas Regions. It excludes credentials, tokens, and rebuildable Local Index
+      data.
+    </p>
+    <div className="notebook-backup__actions">
+      <button type="button" onClick={onExport}>
+        Export Notebook Backup
+      </button>
+      <label htmlFor="notebook-import">
+        Import Notebook Export
+        <input
+          id="notebook-import"
+          type="file"
+          accept="application/json,.json"
+          onChange={onImport}
+        />
+      </label>
+    </div>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
+    {exportJson.length > 0 ? (
+      <label className="notebook-backup__json" htmlFor="notebook-export-json">
+        Notebook Export JSON
+        <textarea id="notebook-export-json" readOnly value={exportJson} />
+      </label>
+    ) : null}
+  </section>
+);
 
 interface SaveStatusBannerProps {
   readonly status: SaveStatus;

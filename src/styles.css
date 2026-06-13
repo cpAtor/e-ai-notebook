@@ -177,6 +177,53 @@ textarea:focus {
   color: #743126;
 }
 
+.notebook-backup {
+  display: grid;
+  gap: 1rem;
+}
+
+.notebook-backup p {
+  margin: 0;
+  color: #4d5871;
+  line-height: 1.6;
+}
+
+.notebook-backup__actions {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.notebook-backup__actions label,
+.notebook-backup__json {
+  display: grid;
+  gap: 0.5rem;
+  color: #4d5871;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.notebook-backup__status {
+  border: 1px solid rgba(39, 87, 25, 0.18);
+  border-radius: 1rem;
+  background: #e6f6d9;
+  color: #275719;
+  padding: 1rem;
+}
+
+.notebook-backup__status--failed {
+  border-color: #e8bdb5;
+  background: #fff0ed;
+  color: #743126;
+}
+
+.notebook-backup__json textarea {
+  min-height: 12rem;
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
 .section-card h2 {
   font-size: clamp(1.65rem, 3vw, 2.4rem);
   letter-spacing: -0.04em;
@@ -515,6 +562,7 @@ textarea:focus {
   .section-row,
   .page-row,
   .search-result,
+  .notebook-backup__actions,
   .add-section-form div {
     grid-template-columns: 1fr;
   }
@@ -530,6 +578,10 @@ textarea:focus {
   }
 
   .page-row {
+    display: grid;
+  }
+
+  .notebook-backup__actions {
     display: grid;
   }
 
