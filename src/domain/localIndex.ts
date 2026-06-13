@@ -59,6 +59,7 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
 
     const itemEntries = notebook.canvasItems
       .filter((canvasItem) => canvasItem.pageId === page.id)
+      .filter((canvasItem) => canvasItem.type !== "freehand-drawing")
       .map((canvasItem): LocalIndexEntry => ({
         id: `${canvasItem.type}:${canvasItem.id}`,
         notebookTitle: notebook.title,
@@ -111,7 +112,7 @@ const normalizeSearchText = (text: string): string => text.trim().toLowerCase();
 
 const searchableTextForCanvasItem = (
   pagePathText: string,
-  canvasItem: CanvasItem
+  canvasItem: Exclude<CanvasItem, { readonly type: "freehand-drawing" }>
 ): string => {
   if (canvasItem.type === "text") {
     return `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`;
@@ -141,7 +142,11 @@ const sourceLabelForCanvasItem = (canvasItem: CanvasItem): string => {
     return "Image Item";
   }
 
-  return "Code Block";
+  if (canvasItem.type === "code-block") {
+    return "Code Block";
+  }
+
+  return "Freehand Drawing";
 };
 
 const snippetForQuery = (text: string, normalizedQuery: string): string => {

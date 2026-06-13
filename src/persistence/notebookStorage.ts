@@ -77,6 +77,18 @@ export const notebookSchemaV2 = notebookSchemaV1.extend({
           mediaType: z.string().startsWith("image/"),
           caption: z.string().default(""),
           tags: z.array(z.string()).default([])
+        }),
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
+          type: z.literal("freehand-drawing"),
+          shape: z.object({
+            type: z.literal("draw"),
+            x: z.number(),
+            y: z.number(),
+            rotation: z.number().default(0),
+            props: z.record(z.string(), z.unknown())
+          })
         })
       ])
     )

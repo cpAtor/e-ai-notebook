@@ -5,6 +5,7 @@ import {
   addLinkCardCanvasItem,
   addBlankPage,
   createStarterNotebook,
+  replacePageCanvasItems,
   replacePageTextCanvasItems
 } from "./notebook";
 import { buildLocalIndex, searchLocalIndex } from "./localIndex";
@@ -205,5 +206,52 @@ describe("Local Index", () => {
       })
     ]);
     expect(searchLocalIndex(index, "secret-bytes")).toEqual([]);
+  });
+
+  it("keeps Freehand Drawings addressable but out of the Local Index", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithDrawing = replacePageCanvasItems(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      "page_dsa",
+      [],
+      [
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 20,
+            y: 40,
+            rotation: 0,
+            props: {
+              segments: [{ type: "free", path: "encoded-handwriting-stroke" }]
+            }
+          }
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 20, y: 40, width: 160, height: 80 }
+        }
+      ]
+    );
+    const index = buildLocalIndex(notebookWithDrawing);
+
+    expect(index.map((entry) => entry.id)).toEqual(["page:page_dsa"]);
+    expect(searchLocalIndex(index, "encoded-handwriting-stroke")).toEqual([]);
+    expect(notebookWithDrawing.canvasRegions).toContainEqual({
+      pageId: "page_dsa",
+      canvasItemId: "canvas_item_sketch",
+      bounds: { x: 20, y: 40, width: 160, height: 80 }
+    });
   });
 });

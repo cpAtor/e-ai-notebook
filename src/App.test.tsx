@@ -7,6 +7,7 @@ import {
   addImageCanvasItem,
   addBlankPage,
   createStarterNotebook,
+  replacePageCanvasItems,
   replacePageTextCanvasItems,
   type Notebook
 } from "./domain/notebook";
@@ -306,10 +307,13 @@ describe("App", () => {
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
     await waitFor(async () => {
       const reloadedNotebook = await store.loadNotebook();
-      expect(reloadedNotebook.canvasItems[0]?.tags).toEqual([
-        "arrays",
-        "invariant"
-      ]);
+      expect(reloadedNotebook.canvasItems).toContainEqual({
+        id: "canvas_item_trace",
+        pageId: "page_dsa",
+        type: "text",
+        text: "Binary search invariant",
+        tags: ["arrays", "invariant"]
+      });
     });
   });
 
@@ -514,6 +518,58 @@ describe("App", () => {
       await screen.findByRole("img", { name: "Updated failover sketch" })
     ).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows Freehand Drawing controls without OCR or searchable handwriting claims", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithDrawing = replacePageCanvasItems(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      "page_dsa",
+      [],
+      [
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 24,
+            y: 36,
+            rotation: 0,
+            props: {
+              segments: [{ type: "free", path: "encoded-handwriting-stroke" }]
+            }
+          }
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 24, y: 36, width: 180, height: 90 }
+        }
+      ]
+    );
+
+    await renderApp(notebookWithDrawing);
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.click(screen.getByRole("button", { name: "Open Page" }));
+
+    expect(await screen.findByRole("button", { name: "Use Draw Tool" })).toBeInTheDocument();
+    expect(screen.getByText(/not OCR or searchable handwriting/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
+
+    expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
+    expect(screen.queryByText("Freehand Drawing")).not.toBeInTheDocument();
   });
 
   it("searches seeded Code Blocks and opens their highlighted Canvas Region", async () => {

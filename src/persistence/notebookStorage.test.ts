@@ -4,7 +4,8 @@ import {
   addImageCanvasItem,
   addBlankPage,
   addLinkCardCanvasItem,
-  createStarterNotebook
+  createStarterNotebook,
+  replacePageCanvasItems
 } from "../domain/notebook";
 import {
   createNotebookStore,
@@ -154,6 +155,52 @@ describe("Notebook storage", () => {
 
     await expect(store.loadNotebook()).resolves.toEqual(notebookWithImage);
     expect(() => notebookSchemaV2.parse(notebookWithImage)).not.toThrow();
+    store.close();
+  });
+
+  it("persists Freehand Drawing source data through the versioned Notebook schema", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+    const dsa = notebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithDrawing = replacePageCanvasItems(
+      addBlankPage(notebook, dsa.id, "page_dsa"),
+      "page_dsa",
+      [],
+      [
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 20,
+            y: 40,
+            rotation: 0,
+            props: {
+              segments: [{ type: "free", path: "encoded-stroke" }],
+              isComplete: true
+            }
+          }
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 20, y: 40, width: 160, height: 80 }
+        }
+      ]
+    );
+
+    await store.saveNotebook(notebookWithDrawing);
+
+    await expect(store.loadNotebook()).resolves.toEqual(notebookWithDrawing);
+    expect(() => notebookSchemaV2.parse(notebookWithDrawing)).not.toThrow();
     store.close();
   });
 });

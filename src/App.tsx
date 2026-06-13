@@ -13,10 +13,11 @@ import { Tldraw, iconTypes, type TLUiAssetUrlOverrides } from "tldraw";
 import "tldraw/tldraw.css";
 import {
   canvasItemIdForShape,
+  pageTldrawCanvasSnapshotFromTldrawShapes,
   shapeNeedsCanvasItemMeta,
-  textCanvasSnapshotFromTldrawShapes,
+  toTldrawFreehandDrawingShapeDrafts,
   toTldrawTextShapeDrafts,
-  type PageTextCanvasSnapshot
+  type PageTldrawCanvasSnapshot
 } from "./canvas/tldrawTextAdapter";
 import {
   buildLocalIndex,
@@ -34,6 +35,7 @@ import {
   createCanvasItemId,
   createPageId,
   createSectionId,
+  type FreehandDrawingCanvasItem,
   getPage,
   getSection,
   type ImageCanvasItem,
@@ -41,7 +43,7 @@ import {
   Notebook,
   Page,
   PageId,
-  replacePageTextCanvasItems,
+  replacePageCanvasItems,
   renameSection,
   removeSection,
   Section,
@@ -306,13 +308,14 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
   const handlePageTextCanvasChange = (
     pageId: PageId,
-    snapshot: PageTextCanvasSnapshot
+    snapshot: PageTldrawCanvasSnapshot
   ) => {
     updateNotebook((currentNotebook) =>
-      replacePageTextCanvasItems(
+      replacePageCanvasItems(
         currentNotebook,
         pageId,
         snapshot.textItems,
+        snapshot.freehandDrawingItems,
         snapshot.regions
       )
     );
@@ -712,7 +715,7 @@ interface ActivePageViewProps {
   ) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
-    snapshot: PageTextCanvasSnapshot
+    snapshot: PageTldrawCanvasSnapshot
   ) => void;
   readonly onTextCanvasItemTagsChange: (
     canvasItemId: CanvasItemId,
@@ -770,8 +773,9 @@ const ActivePageView = ({
       <h3 id="active-page-title">{activePage.page.title}</h3>
       <p>Page Type: unset</p>
       <p>
-        Use tldraw text shapes for rough interview-prep work. Text Canvas Items
-        autosave with app-owned Canvas Regions and reload at the same location.
+        Use tldraw text and draw tools for rough interview-prep work. Text Canvas
+        Items are searchable; Freehand Drawings autosave and reload for navigation
+        without OCR or handwriting search.
       </p>
       <PageLinkCards
         page={activePage.page}
@@ -813,7 +817,7 @@ interface PageTextCanvasProps {
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
-    snapshot: PageTextCanvasSnapshot
+    snapshot: PageTldrawCanvasSnapshot
   ) => void;
   readonly onTextCanvasItemTagsChange: (
     canvasItemId: CanvasItemId,
@@ -829,6 +833,7 @@ const PageTextCanvas = ({
   onTextCanvasItemTagsChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
+  const editorRef = useRef<TldrawEditor | null>(null);
   const initialTextItems = useMemo(
     () =>
       notebook.canvasItems.filter(
@@ -840,6 +845,14 @@ const PageTextCanvas = ({
   const initialRegions = useMemo(
     () => notebook.canvasRegions.filter((region) => region.pageId === page.id),
     [notebook.canvasRegions, page.id]
+  );
+  const initialFreehandDrawingItems = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is FreehandDrawingCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "freehand-drawing"
+      ),
+    [notebook.canvasItems, page.id]
   );
   const highlightedRegion = useMemo(
     () =>
@@ -854,9 +867,13 @@ const PageTextCanvas = ({
   const handleMount = useCallback(
     (editor: TldrawEditor) => {
       const drafts = toTldrawTextShapeDrafts(initialTextItems, initialRegions);
+      const drawingDrafts = toTldrawFreehandDrawingShapeDrafts(
+        initialFreehandDrawingItems
+      );
+      editorRef.current = editor;
 
-      if (drafts.length > 0) {
-        editor.createShapes([...drafts]);
+      if (drafts.length > 0 || drawingDrafts.length > 0) {
+        editor.createShapes([...drafts, ...drawingDrafts]);
       }
 
       editor.setCurrentTool("text");
@@ -871,7 +888,7 @@ const PageTextCanvas = ({
           if (shapeNeedsCanvasItemMeta(shape)) {
             editor.updateShape({
               id: shape.id,
-              type: "text",
+              type: shape.type,
               meta: {
                 ...shape.meta,
                 canvasItemId: canvasItemIdForShape(shape)
@@ -882,7 +899,7 @@ const PageTextCanvas = ({
 
         onPageTextCanvasChange(
           page.id,
-          textCanvasSnapshotFromTldrawShapes(page.id, shapes, (shape) =>
+          pageTldrawCanvasSnapshotFromTldrawShapes(page.id, shapes, (shape) =>
             boundsByShapeId.get(shape.id)
           )
         );
@@ -900,14 +917,32 @@ const PageTextCanvas = ({
 
       return () => {
         window.clearTimeout(saveTimeoutRef.current);
+        editorRef.current = null;
         unsubscribe();
       };
     },
-    [initialRegions, initialTextItems, onPageTextCanvasChange, page.id]
+    [
+      initialFreehandDrawingItems,
+      initialRegions,
+      initialTextItems,
+      onPageTextCanvasChange,
+      page.id
+    ]
   );
 
   return (
     <>
+      <div className="canvas-tool-switcher" aria-label="Canvas tool shortcuts">
+        <button type="button" onClick={() => editorRef.current?.setCurrentTool("text")}>
+          Use Text Tool
+        </button>
+        <button type="button" onClick={() => editorRef.current?.setCurrentTool("draw")}>
+          Use Draw Tool
+        </button>
+        <span>
+          Freehand Drawing stays local and is not OCR or searchable handwriting.
+        </span>
+      </div>
       <div
         className="tldraw-canvas"
         data-testid="tldraw-page-canvas"

@@ -2,6 +2,7 @@ import type {
   CanvasBounds,
   CanvasItemId,
   CanvasRegion,
+  FreehandDrawingCanvasItem,
   PageId,
   TextCanvasItem
 } from "../domain/notebook";
@@ -26,6 +27,7 @@ interface TldrawShape {
   readonly type: string;
   readonly x: number;
   readonly y: number;
+  readonly rotation?: number;
   readonly props?: unknown;
   readonly meta?: Readonly<Record<string, unknown>>;
 }
@@ -53,6 +55,23 @@ export interface TextShapeDraft {
 
 export interface PageTextCanvasSnapshot {
   readonly textItems: readonly TextCanvasItem[];
+  readonly regions: readonly CanvasRegion[];
+}
+
+export interface FreehandDrawingShapeDraft {
+  readonly type: "draw";
+  readonly x: number;
+  readonly y: number;
+  readonly rotation: number;
+  readonly props: Readonly<Record<string, unknown>>;
+  readonly meta: {
+    readonly [CANVAS_ITEM_META_KEY]: CanvasItemId;
+  };
+}
+
+export interface PageTldrawCanvasSnapshot {
+  readonly textItems: readonly TextCanvasItem[];
+  readonly freehandDrawingItems: readonly FreehandDrawingCanvasItem[];
   readonly regions: readonly CanvasRegion[];
 }
 
@@ -84,16 +103,80 @@ export const toTldrawTextShapeDrafts = (
     };
   });
 
+export const toTldrawFreehandDrawingShapeDrafts = (
+  drawingItems: readonly FreehandDrawingCanvasItem[]
+): readonly FreehandDrawingShapeDraft[] =>
+  drawingItems.map((drawingItem) => ({
+    type: "draw",
+    x: drawingItem.shape.x,
+    y: drawingItem.shape.y,
+    rotation: drawingItem.shape.rotation,
+    props: drawingItem.shape.props,
+    meta: {
+      [CANVAS_ITEM_META_KEY]: drawingItem.id
+    }
+  }));
+
 export const textCanvasSnapshotFromTldrawShapes = (
   pageId: PageId,
   shapes: readonly TldrawShape[],
   getBounds: (shape: TldrawShape) => TldrawBounds | undefined
 ): PageTextCanvasSnapshot => {
+  const snapshot = pageTldrawCanvasSnapshotFromTldrawShapes(
+    pageId,
+    shapes,
+    getBounds
+  );
+
+  return {
+    textItems: snapshot.textItems,
+    regions: snapshot.regions.filter((region) =>
+      snapshot.textItems.some((textItem) => textItem.id === region.canvasItemId)
+    )
+  };
+};
+
+export const pageTldrawCanvasSnapshotFromTldrawShapes = (
+  pageId: PageId,
+  shapes: readonly TldrawShape[],
+  getBounds: (shape: TldrawShape) => TldrawBounds | undefined
+): PageTldrawCanvasSnapshot => {
   const textItems: TextCanvasItem[] = [];
+  const freehandDrawingItems: FreehandDrawingCanvasItem[] = [];
   const regions: CanvasRegion[] = [];
 
   for (const shape of shapes) {
-    if (shape.type !== "text") {
+    if (shape.type !== "text" && shape.type !== "draw") {
+      continue;
+    }
+
+    const canvasItemId = canvasItemIdForShape(shape);
+    const bounds = boundsForShape(shape, getBounds(shape));
+
+    if (shape.type === "draw") {
+      const props = drawingShapeProps(shape.props);
+
+      if (props === null) {
+        continue;
+      }
+
+      freehandDrawingItems.push({
+        id: canvasItemId,
+        pageId,
+        type: "freehand-drawing",
+        shape: {
+          type: "draw",
+          x: shape.x,
+          y: shape.y,
+          rotation: shape.rotation ?? 0,
+          props
+        }
+      });
+      regions.push({
+        pageId,
+        canvasItemId,
+        bounds
+      });
       continue;
     }
 
@@ -103,9 +186,6 @@ export const textCanvasSnapshotFromTldrawShapes = (
     if (text.length === 0) {
       continue;
     }
-
-    const canvasItemId = canvasItemIdForShape(shape);
-    const bounds = boundsForShape(shape, getBounds(shape));
 
     textItems.push({
       id: canvasItemId,
@@ -121,7 +201,7 @@ export const textCanvasSnapshotFromTldrawShapes = (
     });
   }
 
-  return { textItems, regions };
+  return { textItems, freehandDrawingItems, regions };
 };
 
 export const canvasItemIdForShape = (shape: TldrawShape): CanvasItemId => {
@@ -135,7 +215,8 @@ export const canvasItemIdForShape = (shape: TldrawShape): CanvasItemId => {
 };
 
 export const shapeNeedsCanvasItemMeta = (shape: TldrawShape): boolean =>
-  shape.type === "text" && !isCanvasItemId(shape.meta?.[CANVAS_ITEM_META_KEY]);
+  (shape.type === "text" || shape.type === "draw") &&
+  !isCanvasItemId(shape.meta?.[CANVAS_ITEM_META_KEY]);
 
 const boundsForShape = (
   shape: TldrawShape,
@@ -192,4 +273,14 @@ const textShapeProps = (props: unknown): { richText?: unknown; w?: number } => {
     richText: shapeProps.richText,
     ...(w === undefined ? {} : { w })
   };
+};
+
+const drawingShapeProps = (
+  props: unknown
+): Readonly<Record<string, unknown>> | null => {
+  if (typeof props !== "object" || props === null) {
+    return null;
+  }
+
+  return props as Readonly<Record<string, unknown>>;
 };

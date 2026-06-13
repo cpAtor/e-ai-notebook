@@ -314,6 +314,20 @@ textarea:focus {
   touch-action: none;
 }
 
+.canvas-tool-switcher {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.canvas-tool-switcher span {
+  color: #4d5871;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .code-block-panel,
 .image-item-panel,
 .link-card-panel {
@@ -492,5 +506,9 @@ textarea:focus {
     height: 62vh;
     min-height: 360px;
     margin: 0.75rem 0;
+  }
+
+  .canvas-tool-switcher {
+    display: grid;
   }
 }

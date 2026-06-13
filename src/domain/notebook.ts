@@ -45,11 +45,27 @@ export interface ImageCanvasItem {
   readonly tags: readonly string[];
 }
 
+export interface FreehandDrawingShape {
+  readonly type: "draw";
+  readonly x: number;
+  readonly y: number;
+  readonly rotation: number;
+  readonly props: Readonly<Record<string, unknown>>;
+}
+
+export interface FreehandDrawingCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "freehand-drawing";
+  readonly shape: FreehandDrawingShape;
+}
+
 export type CanvasItem =
   | TextCanvasItem
   | LinkCardCanvasItem
   | CodeBlockCanvasItem
-  | ImageCanvasItem;
+  | ImageCanvasItem
+  | FreehandDrawingCanvasItem;
 
 export interface CanvasRegion {
   readonly pageId: PageId;
@@ -192,12 +208,23 @@ export const replacePageTextCanvasItems = (
   pageId: PageId,
   nextTextItems: readonly TextCanvasItem[],
   nextRegions: readonly CanvasRegion[]
+): Notebook =>
+  replacePageCanvasItems(notebook, pageId, nextTextItems, [], nextRegions);
+
+export const replacePageCanvasItems = (
+  notebook: Notebook,
+  pageId: PageId,
+  nextTextItems: readonly TextCanvasItem[],
+  nextFreehandDrawingItems: readonly FreehandDrawingCanvasItem[],
+  nextRegions: readonly CanvasRegion[]
 ): Notebook => {
   const pageExists = notebook.pages.some((page) => page.id === pageId);
-  const previousPageTextItemIds = new Set(
+  const previousPageTldrawItemIds = new Set(
     notebook.canvasItems
       .filter(
-        (canvasItem) => canvasItem.pageId === pageId && canvasItem.type === "text"
+        (canvasItem) =>
+          canvasItem.pageId === pageId &&
+          (canvasItem.type === "text" || canvasItem.type === "freehand-drawing")
       )
       .map((canvasItem) => canvasItem.id)
   );
@@ -210,7 +237,9 @@ export const replacePageTextCanvasItems = (
     ...notebook,
     canvasItems: [
       ...notebook.canvasItems.filter(
-        (canvasItem) => canvasItem.pageId !== pageId || canvasItem.type !== "text"
+        (canvasItem) =>
+          canvasItem.pageId !== pageId ||
+          (canvasItem.type !== "text" && canvasItem.type !== "freehand-drawing")
       ),
       ...nextTextItems.map((nextTextItem) => {
         const previousTextItem = notebook.canvasItems.find(
@@ -225,13 +254,14 @@ export const replacePageTextCanvasItems = (
               ? normalizeTags(nextTextItem.tags)
               : (previousTextItem?.tags ?? [])
         };
-      })
+      }),
+      ...nextFreehandDrawingItems
     ],
     canvasRegions: [
       ...notebook.canvasRegions.filter(
         (region) =>
           region.pageId !== pageId ||
-          !previousPageTextItemIds.has(region.canvasItemId)
+          !previousPageTldrawItemIds.has(region.canvasItemId)
       ),
       ...nextRegions
     ]

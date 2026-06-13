@@ -6,6 +6,7 @@ import {
   addBlankPage,
   addSection,
   createStarterNotebook,
+  replacePageCanvasItems,
   replacePageTextCanvasItems,
   removeSection,
   renameSection,
@@ -156,10 +157,13 @@ describe("Notebook Sections", () => {
       ]
     );
 
-    expect(notebookWithTags.canvasItems[0]?.tags).toEqual([
-      "arrays",
-      "binary search"
-    ]);
+    expect(notebookWithTags.canvasItems).toContainEqual({
+      id: "canvas_item_trace",
+      pageId: "page_dsa",
+      type: "text",
+      text: "Binary search invariant",
+      tags: ["arrays", "binary search"]
+    });
   });
 
   it("adds Link Cards with optional notes, Tags, and app-owned Canvas Regions", () => {
@@ -238,6 +242,71 @@ describe("Notebook Sections", () => {
       canvasItemId: "canvas_item_problem_link",
       bounds: { x: 0, y: 0, width: 320, height: 120 }
     });
+  });
+
+  it("saves Freehand Drawings with app-owned Canvas Regions without Tags", () => {
+      const starterNotebook = createStarterNotebook();
+      const dsa = starterNotebook.sections[0];
+
+      if (dsa === undefined) {
+        throw new Error("Expected seeded DSA Section.");
+      }
+
+      const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+      const notebookWithDrawing = replacePageCanvasItems(
+        notebookWithPage,
+        "page_dsa",
+        [],
+        [
+          {
+            id: "canvas_item_sketch",
+            pageId: "page_dsa",
+            type: "freehand-drawing",
+            shape: {
+              type: "draw",
+              x: 24,
+              y: 36,
+              rotation: 0,
+              props: {
+                segments: [{ type: "free", path: "encoded-stroke" }],
+                isComplete: true
+              }
+            }
+          }
+        ],
+        [
+          {
+            pageId: "page_dsa",
+            canvasItemId: "canvas_item_sketch",
+            bounds: { x: 24, y: 36, width: 180, height: 90 }
+          }
+        ]
+      );
+
+      expect(notebookWithDrawing.canvasItems).toEqual([
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 24,
+            y: 36,
+            rotation: 0,
+            props: {
+              segments: [{ type: "free", path: "encoded-stroke" }],
+              isComplete: true
+            }
+          }
+        }
+      ]);
+      expect(notebookWithDrawing.canvasRegions).toEqual([
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 24, y: 36, width: 180, height: 90 }
+        }
+      ]);
   });
 
   it("adds and edits Code Blocks with optional Tags and app-owned Canvas Regions", () => {

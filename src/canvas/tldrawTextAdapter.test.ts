@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   canvasItemIdForShape,
+  pageTldrawCanvasSnapshotFromTldrawShapes,
   shapeNeedsCanvasItemMeta,
   textCanvasSnapshotFromTldrawShapes,
+  toTldrawFreehandDrawingShapeDrafts,
   toTldrawTextShapeDrafts
 } from "./tldrawTextAdapter";
 
@@ -116,5 +118,97 @@ describe("tldraw text adapter", () => {
 
     expect(canvasItemIdForShape(shape)).toBe("canvas_item_shape_new-text");
     expect(shapeNeedsCanvasItemMeta(shape)).toBe(true);
+  });
+
+  it("creates tldraw draw shape drafts from app-owned Freehand Drawings", () => {
+    expect(
+      toTldrawFreehandDrawingShapeDrafts([
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 40,
+            y: 56,
+            rotation: 0,
+            props: {
+              color: "black",
+              segments: [{ type: "free", path: "abc123" }],
+              isComplete: true
+            }
+          }
+        }
+      ])
+    ).toEqual([
+      {
+        type: "draw",
+        x: 40,
+        y: 56,
+        rotation: 0,
+        props: {
+          color: "black",
+          segments: [{ type: "free", path: "abc123" }],
+          isComplete: true
+        },
+        meta: {
+          canvasItemId: "canvas_item_sketch"
+        }
+      }
+    ]);
+  });
+
+  it("extracts Freehand Drawings and Canvas Regions without text content", () => {
+    const shape = {
+      id: "shape:sketch",
+      type: "draw",
+      x: 10,
+      y: 20,
+      rotation: 0.2,
+      props: {
+        color: "black",
+        segments: [{ type: "free", path: "encoded-stroke" }],
+        isComplete: true
+      },
+      meta: {
+        canvasItemId: "canvas_item_sketch"
+      }
+    };
+
+    expect(
+      pageTldrawCanvasSnapshotFromTldrawShapes("page_dsa", [shape], () => ({
+        x: 12,
+        y: 24,
+        w: 210,
+        h: 80
+      }))
+    ).toEqual({
+      textItems: [],
+      freehandDrawingItems: [
+        {
+          id: "canvas_item_sketch",
+          pageId: "page_dsa",
+          type: "freehand-drawing",
+          shape: {
+            type: "draw",
+            x: 10,
+            y: 20,
+            rotation: 0.2,
+            props: {
+              color: "black",
+              segments: [{ type: "free", path: "encoded-stroke" }],
+              isComplete: true
+            }
+          }
+        }
+      ],
+      regions: [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_sketch",
+          bounds: { x: 12, y: 24, width: 210, height: 80 }
+        }
+      ]
+    });
   });
 });
