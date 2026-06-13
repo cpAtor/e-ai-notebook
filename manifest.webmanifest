@@ -1,0 +1,9 @@
+{
+  "name": "Interview Prep Notebook",
+  "short_name": "Notebook",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#edf2f7",
+  "theme_color": "#0f172a",
+  "icons": []
+}

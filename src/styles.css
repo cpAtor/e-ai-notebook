@@ -1,0 +1,149 @@
+:root {
+  color: #172033;
+  background: #edf2f7;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.65rem 0.9rem;
+  color: #f8fafc;
+  background: #2563eb;
+  cursor: pointer;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(18rem, 24rem) 1fr;
+  min-height: 100vh;
+}
+
+.notebook-panel {
+  padding: 2rem;
+  color: #f8fafc;
+  background: #0f172a;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #60a5fa;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.privacy-pill,
+.autosave-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: rgb(255 255 255 / 12%);
+}
+
+.sections {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.section-card {
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgb(255 255 255 / 8%);
+}
+
+.section-card h3 {
+  margin: 0 0 0.75rem;
+}
+
+.page-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.page-button {
+  width: 100%;
+  color: #dbeafe;
+  background: rgb(255 255 255 / 10%);
+  text-align: left;
+}
+
+.page-button.active {
+  background: #1d4ed8;
+}
+
+.page-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 2rem;
+  background: #fff;
+  box-shadow: 0 1px 12px rgb(15 23 42 / 8%);
+}
+
+.page-header h2 {
+  margin: 0.25rem 0;
+}
+
+.page-header .autosave-status {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.infinite-canvas {
+  min-height: 100%;
+  overflow: auto;
+  background-color: #f8fafc;
+  background-image:
+    linear-gradient(#dbeafe 1px, transparent 1px),
+    linear-gradient(90deg, #dbeafe 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.infinite-canvas textarea {
+  width: 32rem;
+  min-height: 18rem;
+  margin: 6rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 1rem;
+  padding: 1rem;
+  resize: both;
+  box-shadow: 0 24px 48px rgb(15 23 42 / 12%);
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .infinite-canvas textarea {
+    width: calc(100% - 2rem);
+    margin: 1rem;
+  }
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <title>Interview Prep Notebook</title>
+    <link rel="icon" href="data:,">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="notebook-panel" aria-label="Notebook navigation">
+        <p class="eyebrow">Notebook</p>
+        <h1 data-notebook-title>Interview Prep Notebook</h1>
+        <p class="privacy-pill" data-notebook-visibility>private by default</p>
+        <div class="sections" data-sections></div>
+      </aside>
+
+      <section class="page-shell" aria-label="Page canvas">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Page</p>
+            <h2 data-page-title>Create a blank Page</h2>
+            <p data-page-meta>Choose a Section to add your first blank Page.</p>
+          </div>
+          <p class="autosave-status" data-autosave-status>Autosave ready</p>
+        </header>
+
+        <div class="infinite-canvas" data-canvas hidden>
+          <textarea
+            aria-label="Infinite-canvas notes"
+            data-canvas-text
+            placeholder="Start anywhere. Your Page autosaves as you type."
+          ></textarea>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
+  </body>
+</html>
