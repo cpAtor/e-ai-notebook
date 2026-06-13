@@ -107,21 +107,22 @@ export interface Notebook {
   readonly canvasRegions: readonly CanvasRegion[];
 }
 
-export const STARTER_SECTION_TITLES = [
-  "DSA",
-  "System Design",
-  "Research"
-] as const;
+export const STARTER_INBOX_SECTION_ID: SectionId = "section_inbox";
+export const STARTER_DEFAULT_PAGE_ID: PageId = "page_default";
 
 export const createStarterNotebook = (): Notebook => ({
   id: "notebook_private_interview_prep",
   title: "Interview Prep Notebook",
   privacyMode: "private-by-default",
-  sections: STARTER_SECTION_TITLES.map((title) => ({
-    id: sectionIdFromTitle(title),
-    title
-  })),
-  pages: [],
+  sections: [{ id: STARTER_INBOX_SECTION_ID, title: "Inbox" }],
+  pages: [
+    {
+      id: STARTER_DEFAULT_PAGE_ID,
+      sectionId: STARTER_INBOX_SECTION_ID,
+      title: "Default Page",
+      pageType: null
+    }
+  ],
   canvasItems: [],
   canvasRegions: []
 });
@@ -596,9 +597,6 @@ export const createCanvasItemId = (): CanvasItemId => {
 
   return `canvas_item_${Date.now().toString(36)}`;
 };
-
-const sectionIdFromTitle = (title: string): SectionId =>
-  `section_${title.toLowerCase().replaceAll(" ", "_")}`;
 
 const normalizeSectionTitle = (title: string): string => {
   const trimmedTitle = title.trim();

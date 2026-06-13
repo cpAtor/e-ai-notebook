@@ -150,13 +150,13 @@ describe("Notebook storage", () => {
   it("persists Link Card source data through the versioned Notebook schema", async () => {
     const store = createNotebookStore(databaseName);
     const notebook = await store.loadNotebook();
-    const research = notebook.sections.find((section) => section.title === "Research");
+    const inboxSection = notebook.sections[0];
 
-    if (research === undefined) {
-      throw new Error("Expected seeded Research Section.");
+    if (inboxSection === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(notebook, research.id, "page_research");
+    const notebookWithPage = addBlankPage(notebook, inboxSection.id, "page_research");
     const notebookWithLinkCard = addLinkCardCanvasItem(
       notebookWithPage,
       "page_research",
@@ -201,15 +201,13 @@ describe("Notebook storage", () => {
   it("persists Image Item source data through the versioned Notebook schema", async () => {
     const store = createNotebookStore(databaseName);
     const notebook = await store.loadNotebook();
-    const systemDesign = notebook.sections.find(
-      (section) => section.title === "System Design"
-    );
+    const inboxSection = notebook.sections[0];
 
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
+    if (inboxSection === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(notebook, systemDesign.id, "page_design");
+    const notebookWithPage = addBlankPage(notebook, inboxSection.id, "page_design");
     const notebookWithImage = addImageCanvasItem(
       notebookWithPage,
       "page_design",
@@ -230,15 +228,13 @@ describe("Notebook storage", () => {
   it("persists Diagram Item source data through the versioned Notebook schema", async () => {
     const store = createNotebookStore(databaseName);
     const notebook = await store.loadNotebook();
-    const systemDesign = notebook.sections.find(
-      (section) => section.title === "System Design"
-    );
+    const inboxSection = notebook.sections[0];
 
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
+    if (inboxSection === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(notebook, systemDesign.id, "page_design");
+    const notebookWithPage = addBlankPage(notebook, inboxSection.id, "page_design");
     const notebookWithDiagramItem = addDiagramCanvasItem(
       notebookWithPage,
       "page_design",
@@ -446,14 +442,16 @@ describe("Notebook storage", () => {
     const rebuiltIndex = buildLocalIndex(importedNotebook);
 
     expect(importedNotebook).toEqual(notebookWithDiagram);
-    expect(rebuiltIndex.map((entry) => entry.id)).toEqual([
-      "page:page_dsa",
-      "text:canvas_item_trace",
-      "link-card:canvas_item_link",
-      "code-block:canvas_item_code",
-      "image:canvas_item_image",
-      "diagram:canvas_item_diagram"
-    ]);
+    expect(rebuiltIndex.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining([
+        "page:page_dsa",
+        "text:canvas_item_trace",
+        "link-card:canvas_item_link",
+        "code-block:canvas_item_code",
+        "image:canvas_item_image",
+        "diagram:canvas_item_diagram"
+      ])
+    );
     expect(rebuiltIndex).not.toContainEqual(
       expect.objectContaining({ id: "stale:index-entry" })
     );

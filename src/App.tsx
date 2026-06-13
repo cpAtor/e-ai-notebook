@@ -206,6 +206,19 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           setLoadError(null);
           setRecoveryState(null);
           setSaveStatus({ kind: "saved" });
+
+          if (parsePageRoute(window.location.pathname).kind === "notebook") {
+            const targetPage = resolveOpeningPage(storedNotebook);
+            if (targetPage !== null) {
+              const path = pagePath(targetPage.sectionId, targetPage.pageId);
+              window.history.pushState({}, "", path);
+              setRoute({
+                kind: "page",
+                sectionId: targetPage.sectionId,
+                pageId: targetPage.pageId
+              });
+            }
+          }
         }
       })
       .catch((error: unknown) => {
@@ -785,6 +798,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const openPage = (sectionId: SectionId, pageId: PageId) => {
     const path = pagePath(sectionId, pageId);
     window.history.pushState({}, "", path);
+    setLastOpenedPage(sectionId, pageId);
     setRoute({ kind: "page", sectionId, pageId });
   };
 
@@ -2356,6 +2370,53 @@ const LocalSearch = ({
 
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;
+
+const LAST_OPENED_PAGE_STORAGE_KEY = "notebook_last_opened_page";
+
+const getLastOpenedPage = (): { sectionId: SectionId; pageId: PageId } | null => {
+  try {
+    const stored = localStorage.getItem(LAST_OPENED_PAGE_STORAGE_KEY);
+    if (stored === null) return null;
+    const parsed = JSON.parse(stored) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { sectionId, pageId } = parsed as Record<string, unknown>;
+    if (typeof sectionId !== "string" || typeof pageId !== "string") return null;
+    if (!sectionId.startsWith("section_") || !pageId.startsWith("page_")) return null;
+    return { sectionId: sectionId as SectionId, pageId: pageId as PageId };
+  } catch {
+    return null;
+  }
+};
+
+const setLastOpenedPage = (sectionId: SectionId, pageId: PageId): void => {
+  try {
+    localStorage.setItem(
+      LAST_OPENED_PAGE_STORAGE_KEY,
+      JSON.stringify({ sectionId, pageId })
+    );
+  } catch {
+    // Ignore storage errors; last-opened page is best-effort
+  }
+};
+
+const resolveOpeningPage = (
+  notebook: Notebook
+): { sectionId: SectionId; pageId: PageId } | null => {
+  const lastOpened = getLastOpenedPage();
+  if (lastOpened !== null) {
+    const page = getPage(notebook, lastOpened.pageId);
+    if (page !== undefined && page.sectionId === lastOpened.sectionId) {
+      return lastOpened;
+    }
+  }
+
+  const firstPage = notebook.pages[0];
+  if (firstPage !== undefined) {
+    return { sectionId: firstPage.sectionId, pageId: firstPage.id };
+  }
+
+  return null;
+};
 
 const tagsFromDraft = (draft: string): readonly string[] =>
   draft.split(",").map((tag) => tag.trim());
