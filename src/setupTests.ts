@@ -51,6 +51,7 @@ vi.mock("tldraw", async () => {
   const React = await import("react");
 
   return {
+    iconTypes: [],
     Tldraw: ({
       onMount
     }: {

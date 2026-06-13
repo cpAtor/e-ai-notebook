@@ -34,6 +34,7 @@ button {
   cursor: pointer;
   font-weight: 700;
   padding: 0.85rem 1.15rem;
+  touch-action: manipulation;
 }
 
 button:hover {
@@ -310,6 +311,7 @@ textarea:focus {
   border: 1px solid rgba(23, 32, 51, 0.14);
   border-radius: 1rem;
   margin: 1rem 0;
+  touch-action: none;
 }
 
 .code-block-panel,
@@ -454,6 +456,11 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 1rem, 1080px);
+    padding: 1rem 0;
+  }
+
   .hero__header,
   .section-card__header,
   .section-row,
@@ -475,5 +482,15 @@ textarea:focus {
 
   .page-row {
     display: grid;
+  }
+
+  .page-canvas {
+    margin-top: 1rem;
+  }
+
+  .tldraw-canvas {
+    height: 62vh;
+    min-height: 360px;
+    margin: 0.75rem 0;
   }
 }

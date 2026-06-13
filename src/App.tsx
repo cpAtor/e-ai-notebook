@@ -9,7 +9,7 @@ import {
   useRef,
   useState
 } from "react";
-import { Tldraw } from "tldraw";
+import { Tldraw, iconTypes, type TLUiAssetUrlOverrides } from "tldraw";
 import "tldraw/tldraw.css";
 import {
   canvasItemIdForShape,
@@ -59,6 +59,55 @@ import {
 
 const DEFAULT_NEW_SECTION_TITLE = "New Section";
 const defaultNotebookStore = createNotebookStore();
+const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
+  fonts: {
+    tldraw_draw: "data:font/woff2;base64,",
+    tldraw_draw_bold: "data:font/woff2;base64,",
+    tldraw_draw_italic: "data:font/woff2;base64,",
+    tldraw_draw_italic_bold: "data:font/woff2;base64,",
+    tldraw_mono: "data:font/woff2;base64,",
+    tldraw_mono_bold: "data:font/woff2;base64,",
+    tldraw_mono_italic: "data:font/woff2;base64,",
+    tldraw_mono_italic_bold: "data:font/woff2;base64,",
+    tldraw_sans: "data:font/woff2;base64,",
+    tldraw_sans_bold: "data:font/woff2;base64,",
+    tldraw_sans_italic: "data:font/woff2;base64,",
+    tldraw_sans_italic_bold: "data:font/woff2;base64,",
+    tldraw_serif: "data:font/woff2;base64,",
+    tldraw_serif_bold: "data:font/woff2;base64,",
+    tldraw_serif_italic: "data:font/woff2;base64,",
+    tldraw_serif_italic_bold: "data:font/woff2;base64,"
+  },
+  icons: Object.fromEntries(
+    iconTypes.map((iconType) => [
+      iconType,
+      `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg'/>")}`
+    ])
+  ),
+  embedIcons: {
+    canva: "data:image/png;base64,",
+    codepen: "data:image/png;base64,",
+    codesandbox: "data:image/png;base64,",
+    desmos: "data:image/png;base64,",
+    felt: "data:image/png;base64,",
+    figma: "data:image/png;base64,",
+    github_gist: "data:image/png;base64,",
+    google_calendar: "data:image/png;base64,",
+    google_maps: "data:image/png;base64,",
+    google_slides: "data:image/png;base64,",
+    observable: "data:image/png;base64,",
+    replit: "data:image/png;base64,",
+    scratch: "data:image/png;base64,",
+    spotify: "data:image/png;base64,",
+    tldraw: "data:image/png;base64,",
+    val_town: "data:image/png;base64,",
+    vimeo: "data:image/png;base64,",
+    youtube: "data:image/png;base64,"
+  },
+  translations: {
+    en: `data:application/json,${encodeURIComponent("{}")}`
+  }
+};
 
 interface AppProps {
   readonly store?: NotebookStore;
@@ -859,30 +908,35 @@ const PageTextCanvas = ({
 
   return (
     <>
-    <div
-      className="tldraw-canvas"
-      data-testid="tldraw-page-canvas"
-      aria-label={`${page.title} tldraw text canvas`}
-    >
-      {highlightedRegion !== null ? (
-        <div
-          className="canvas-region-highlight"
-          role="status"
-          aria-label="Highlighted Canvas Region"
-          style={{
-            height: `${highlightedRegion.bounds.height}px`,
-            left: `${highlightedRegion.bounds.x}px`,
-            top: `${highlightedRegion.bounds.y}px`,
-            width: `${highlightedRegion.bounds.width}px`
-          }}
+      <div
+        className="tldraw-canvas"
+        data-testid="tldraw-page-canvas"
+        aria-label={`${page.title} tldraw text canvas`}
+      >
+        {highlightedRegion !== null ? (
+          <div
+            className="canvas-region-highlight"
+            role="status"
+            aria-label="Highlighted Canvas Region"
+            style={{
+              height: `${highlightedRegion.bounds.height}px`,
+              left: `${highlightedRegion.bounds.x}px`,
+              top: `${highlightedRegion.bounds.y}px`,
+              width: `${highlightedRegion.bounds.width}px`
+            }}
+          />
+        ) : null}
+        <Tldraw
+          assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
+          autoFocus
+          initialState="text"
+          onMount={handleMount}
         />
-      ) : null}
-      <Tldraw autoFocus initialState="text" onMount={handleMount} />
-    </div>
-    <TextCanvasItemTags
-      pageTextItems={initialTextItems}
-      onTagsChange={onTextCanvasItemTagsChange}
-    />
+      </div>
+      <TextCanvasItemTags
+        pageTextItems={initialTextItems}
+        onTagsChange={onTextCanvasItemTagsChange}
+      />
     </>
   );
 };
