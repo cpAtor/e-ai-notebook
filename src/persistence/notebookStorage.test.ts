@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import Dexie from "dexie";
 import {
   addCodeBlockCanvasItem,
   addDiagramCanvasItem,
@@ -14,6 +15,7 @@ import {
   createNotebookExport,
   createNotebookStore,
   deleteNotebookDatabase,
+  NotebookRecoveryError,
   parseNotebookExport,
   notebookSchemaV1,
   notebookSchemaV2,
@@ -81,6 +83,37 @@ describe("Notebook storage", () => {
 
     await store.saveNotebook(notebook);
     await expect(store.loadNotebook()).resolves.toEqual(notebook);
+    store.close();
+  });
+
+  it("surfaces invalid stored Notebook data as a recoverable raw payload", async () => {
+    const rawRecord = {
+      id: "notebook_private_interview_prep",
+      schemaVersion: 2,
+      notebook: {
+        ...createStarterNotebook(),
+        pages: [
+          {
+            id: "page_invalid",
+            sectionId: "section_dsa",
+            title: "Invalid",
+            pageType: "template"
+          }
+        ]
+      }
+    };
+    const database = new Dexie(databaseName);
+    database.version(1).stores({ notebooks: "id" });
+    await database.table("notebooks").put(rawRecord);
+    database.close();
+    const store = createNotebookStore(databaseName);
+
+    await expect(store.loadNotebook()).rejects.toBeInstanceOf(
+      NotebookRecoveryError
+    );
+    await expect(store.loadRawNotebookPayload()).resolves.toContain(
+      '"pageType": "template"'
+    );
     store.close();
   });
 

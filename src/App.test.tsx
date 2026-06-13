@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
+  addSection,
   addCodeBlockCanvasItem,
   addDiagramCanvasItem,
   addImageCanvasItem,
@@ -15,6 +16,7 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  NotebookRecoveryError,
   serializeNotebookExport,
   type NotebookStore
 } from "./persistence/notebookStorage";
@@ -106,6 +108,11 @@ describe("App", () => {
 
         persistedNotebook = nextNotebook;
       }),
+      loadRawNotebookPayload: vi.fn(async () => JSON.stringify(persistedNotebook)),
+      startFreshNotebook: vi.fn(async () => {
+        persistedNotebook = createStarterNotebook();
+        return persistedNotebook;
+      }),
       close: vi.fn()
     };
 
@@ -135,6 +142,76 @@ describe("App", () => {
     render(<App store={failingStore} />);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
+  });
+
+  it("shows recovery actions for invalid stored Notebook data without claiming autosave", async () => {
+    const user = userEvent.setup();
+    const rawPayload = '{ "schemaVersion": 2, "notebook": "corrupt" }';
+    const recoveryStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => {
+        throw new NotebookRecoveryError(
+          new Error("Expected Notebook object."),
+          rawPayload
+        );
+      }),
+      loadRawNotebookPayload: vi.fn(async () => rawPayload),
+      saveNotebook: vi.fn(),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={recoveryStore} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Notebook data needs recovery" })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/autosave are paused/i)).toBeInTheDocument();
+    expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Export Raw Stored Payload" }));
+
+    expect(screen.getByLabelText("Raw stored payload JSON")).toHaveValue(rawPayload);
+
+    await user.click(screen.getByRole("button", { name: "Start New Notebook" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Interview Prep Notebook" })
+    ).toBeInTheDocument();
+    expect(recoveryStore.startFreshNotebook).toHaveBeenCalled();
+  });
+
+  it("imports a valid Notebook Export from the recovery screen", async () => {
+    const user = userEvent.setup();
+    const importedNotebook = addSection(
+      createStarterNotebook(),
+      "section_behavioral",
+      "Behavioral"
+    );
+    const recoveryStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => {
+        throw new NotebookRecoveryError(
+          new Error("Canvas Items were invalid."),
+          '{ "schemaVersion": 2 }'
+        );
+      }),
+      loadRawNotebookPayload: vi.fn(async () => '{ "schemaVersion": 2 }'),
+      saveNotebook: vi.fn(),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={recoveryStore} />);
+
+    await screen.findByRole("heading", { name: "Notebook data needs recovery" });
+    await user.upload(
+      screen.getByLabelText("Import Notebook Export"),
+      new File([serializeNotebookExport(importedNotebook)], "notebook.json", {
+        type: "application/json"
+      })
+    );
+
+    expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
+    expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(importedNotebook);
   });
 
   it("makes no default runtime fetch calls", async () => {

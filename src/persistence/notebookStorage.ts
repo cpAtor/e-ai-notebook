@@ -145,6 +145,20 @@ const notebookExportSchemaV2 = z.object({
 type NotebookRecordV2 = z.infer<typeof notebookRecordSchemaV2>;
 export type NotebookExport = z.infer<typeof notebookExportSchemaV2>;
 
+export class NotebookRecoveryError extends Error {
+  readonly rawPayload: string;
+
+  constructor(validationError: unknown, rawPayload: string) {
+    super(
+      validationError instanceof Error
+        ? `Stored Notebook data could not be validated or migrated: ${validationError.message}`
+        : "Stored Notebook data could not be validated or migrated."
+    );
+    this.name = "NotebookRecoveryError";
+    this.rawPayload = rawPayload;
+  }
+}
+
 class NotebookDatabase extends Dexie {
   notebooks!: Table<NotebookRecordV2, NotebookId>;
 
@@ -158,7 +172,9 @@ class NotebookDatabase extends Dexie {
 
 export interface NotebookStore {
   loadNotebook: () => Promise<Notebook>;
+  loadRawNotebookPayload: () => Promise<string | null>;
   saveNotebook: (notebook: Notebook) => Promise<void>;
+  startFreshNotebook: () => Promise<Notebook>;
   close: () => void;
 }
 
@@ -177,10 +193,24 @@ export const createNotebookStore = (
         return notebook;
       }
 
-      return parseNotebookRecord(record).notebook;
+      try {
+        return parseNotebookRecord(record).notebook;
+      } catch (error: unknown) {
+        throw new NotebookRecoveryError(error, serializeRawPayload(record));
+      }
+    },
+    loadRawNotebookPayload: async () => {
+      const record = await database.notebooks.get(NOTEBOOK_RECORD_ID);
+
+      return record === undefined ? null : serializeRawPayload(record);
     },
     saveNotebook: async (notebook) => {
       await database.notebooks.put(toNotebookRecord(notebook));
+    },
+    startFreshNotebook: async () => {
+      const notebook = createStarterNotebook();
+      await database.notebooks.put(toNotebookRecord(notebook));
+      return notebook;
     },
     close: () => {
       database.close();
@@ -256,3 +286,5 @@ const toNotebookRecord = (notebook: Notebook): NotebookRecordV2 =>
     schemaVersion: NOTEBOOK_SCHEMA_VERSION,
     notebook
   });
+
+const serializeRawPayload = (payload: unknown): string => JSON.stringify(payload, null, 2);

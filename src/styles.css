@@ -224,6 +224,21 @@ textarea:focus {
     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+.recovery-screen {
+  display: grid;
+  gap: 1rem;
+}
+
+.recovery-screen h1,
+.recovery-screen p {
+  margin: 0;
+}
+
+.recovery-screen p {
+  color: #4d5871;
+  line-height: 1.6;
+}
+
 .section-card h2 {
   font-size: clamp(1.65rem, 3vw, 2.4rem);
   letter-spacing: -0.04em;

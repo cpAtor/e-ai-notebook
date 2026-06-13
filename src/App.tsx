@@ -60,6 +60,7 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  NotebookRecoveryError,
   notebookExportFileName,
   parseNotebookExport,
   serializeNotebookExport,
@@ -158,9 +159,17 @@ type BackupStatus =
   | { readonly kind: "success"; readonly message: string }
   | { readonly kind: "failed"; readonly message: string };
 
+interface RecoveryState {
+  readonly message: string;
+  readonly rawPayload: string;
+  readonly rawExportJson: string;
+  readonly status: BackupStatus;
+}
+
 export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
   const [notebookExportJson, setNotebookExportJson] = useState("");
@@ -185,11 +194,24 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         if (isCurrent) {
           setNotebook(storedNotebook);
           setLoadError(null);
+          setRecoveryState(null);
           setSaveStatus({ kind: "saved" });
         }
       })
       .catch((error: unknown) => {
         if (isCurrent) {
+          if (error instanceof NotebookRecoveryError) {
+            setRecoveryState({
+              message: error.message,
+              rawPayload: error.rawPayload,
+              rawExportJson: "",
+              status: { kind: "idle" }
+            });
+            setLoadError(null);
+            setSaveStatus({ kind: "idle" });
+            return;
+          }
+
           setLoadError(
             error instanceof Error
               ? error.message
@@ -268,17 +290,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     const exportJson = serializeNotebookExport(notebook);
     setNotebookExportJson(exportJson);
-
-    if (typeof URL.createObjectURL === "function") {
-      const exportUrl = URL.createObjectURL(
-        new Blob([exportJson], { type: "application/json" })
-      );
-      const downloadLink = document.createElement("a");
-      downloadLink.href = exportUrl;
-      downloadLink.download = notebookExportFileName();
-      downloadLink.click();
-      URL.revokeObjectURL(exportUrl);
-    }
+    downloadJsonFile(exportJson, notebookExportFileName());
 
     setBackupStatus({
       kind: "success",
@@ -288,6 +300,18 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handleNotebookImport = (event: ChangeEvent<HTMLInputElement>) => {
+    handleNotebookImportFile(
+      event,
+      "Notebook Export imported. Search uses a freshly rebuilt Local Index from the imported Notebook source data.",
+      setBackupStatus
+    );
+  };
+
+  const handleNotebookImportFile = (
+    event: ChangeEvent<HTMLInputElement>,
+    successMessage: string,
+    setStatus: (status: BackupStatus) => void
+  ) => {
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -297,25 +321,28 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     const reader = new FileReader();
     reader.addEventListener("load", () => {
+      void (async () => {
       try {
         if (typeof reader.result !== "string") {
           throw new Error("Notebook Export file could not be read as text.");
         }
 
         const importedNotebook = parseNotebookExport(reader.result);
-        saveNotebook(importedNotebook);
+        await store.saveNotebook(importedNotebook);
+        setNotebook(importedNotebook);
+        setSaveStatus({ kind: "saved" });
         setNotebookExportJson("");
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
         window.history.pushState({}, "", "/");
         setRoute({ kind: "notebook" });
-        setBackupStatus({
+        setRecoveryState(null);
+        setStatus({
           kind: "success",
-          message:
-            "Notebook Export imported. Search uses a freshly rebuilt Local Index from the imported Notebook source data."
+          message: successMessage
         });
       } catch (error: unknown) {
-        setBackupStatus({
+        setStatus({
           kind: "failed",
           message:
             error instanceof Error
@@ -323,15 +350,83 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
               : "Notebook Export could not be imported."
         });
       }
+      })();
     });
     reader.addEventListener("error", () => {
-      setBackupStatus({
+      setStatus({
         kind: "failed",
         message:
           reader.error?.message ?? "Notebook Export file could not be imported."
       });
     });
     reader.readAsText(file);
+  };
+
+  const handleRecoveryRawPayloadExport = () => {
+    if (recoveryState === null) {
+      return;
+    }
+
+    downloadJsonFile(
+      recoveryState.rawPayload,
+      "interview-prep-notebook-raw-payload.json"
+    );
+    setRecoveryState({
+      ...recoveryState,
+      rawExportJson: recoveryState.rawPayload,
+      status: {
+        kind: "success",
+        message:
+          "Raw stored payload is ready for backup or debugging. It has not been treated as a valid Notebook Export."
+      }
+    });
+  };
+
+  const handleRecoveryStartFresh = () => {
+    void (async () => {
+      try {
+        const freshNotebook = await store.startFreshNotebook();
+        setNotebook(freshNotebook);
+        setLoadError(null);
+        setRecoveryState(null);
+        setSaveStatus({ kind: "saved" });
+        setSearchQuery("");
+        setHighlightedCanvasItemId(null);
+        window.history.pushState({}, "", "/");
+        setRoute({ kind: "notebook" });
+        setBackupStatus({
+          kind: "success",
+          message:
+            "Started a new Notebook after replacing the invalid stored payload."
+        });
+      } catch (error: unknown) {
+        setRecoveryState((currentState) =>
+          currentState === null
+            ? null
+            : {
+                ...currentState,
+                status: {
+                  kind: "failed",
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : "A new Notebook could not be started."
+                }
+              }
+        );
+      }
+    })();
+  };
+
+  const handleRecoveryImport = (event: ChangeEvent<HTMLInputElement>) => {
+    handleNotebookImportFile(
+      event,
+      "Notebook Export imported and persisted after invalid stored data was replaced.",
+      (status) =>
+        setRecoveryState((currentState) =>
+          currentState === null ? null : { ...currentState, status }
+        )
+    );
   };
 
   const handleSectionRename = (sectionId: SectionId, title: string) => {
@@ -567,6 +662,17 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     setRoute({ kind: "page", sectionId, pageId });
   };
 
+  if (recoveryState !== null) {
+    return (
+      <RecoveryScreen
+        state={recoveryState}
+        onRawPayloadExport={handleRecoveryRawPayloadExport}
+        onStartFresh={handleRecoveryStartFresh}
+        onImport={handleRecoveryImport}
+      />
+    );
+  }
+
   if (loadError !== null) {
     return (
       <main className="app-shell" aria-labelledby="storage-error-title">
@@ -733,6 +839,83 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
       </section>
     </main>
   );
+};
+
+interface RecoveryScreenProps {
+  readonly state: RecoveryState;
+  readonly onRawPayloadExport: () => void;
+  readonly onStartFresh: () => void;
+  readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+}
+
+const RecoveryScreen = ({
+  state,
+  onRawPayloadExport,
+  onStartFresh,
+  onImport
+}: RecoveryScreenProps) => (
+  <main className="app-shell" aria-labelledby="recovery-title">
+    <section className="section-card recovery-screen" role="alert">
+      <p className="eyebrow">Storage recovery</p>
+      <h1 id="recovery-title">Notebook data needs recovery</h1>
+      <p>
+        Stored Notebook data could not pass the versioned schema and migration
+        boundary, so capture and autosave are paused. The app has not silently
+        reset or replaced your browser data.
+      </p>
+      <p>{state.message}</p>
+      <div className="notebook-backup__actions">
+        <button type="button" onClick={onRawPayloadExport}>
+          Export Raw Stored Payload
+        </button>
+        <label htmlFor="recovery-notebook-import">
+          Import Notebook Export
+          <input
+            id="recovery-notebook-import"
+            type="file"
+            accept="application/json,.json"
+            onChange={onImport}
+          />
+        </label>
+        <button type="button" className="remove-button" onClick={onStartFresh}>
+          Start New Notebook
+        </button>
+      </div>
+      {state.status.kind !== "idle" ? (
+        <p
+          className={
+            state.status.kind === "failed"
+              ? "notebook-backup__status notebook-backup__status--failed"
+              : "notebook-backup__status"
+          }
+          role={state.status.kind === "failed" ? "alert" : "status"}
+        >
+          {state.status.message}
+        </p>
+      ) : null}
+      {state.rawExportJson.length > 0 ? (
+        <label className="notebook-backup__json" htmlFor="raw-payload-json">
+          Raw stored payload JSON
+          <textarea id="raw-payload-json" readOnly value={state.rawExportJson} />
+        </label>
+      ) : null}
+    </section>
+  </main>
+);
+
+const downloadJsonFile = (json: string, fileName: string) => {
+  if (typeof URL.createObjectURL !== "function") {
+    return;
+  }
+
+  const exportUrl = URL.createObjectURL(
+    new Blob([json], { type: "application/json" })
+  );
+  const downloadLink = document.createElement("a");
+  downloadLink.href = exportUrl;
+  downloadLink.download = fileName;
+  downloadLink.click();
+  URL.revokeObjectURL(exportUrl);
 };
 
 interface NotebookBackupPanelProps {
