@@ -5,7 +5,8 @@ import {
   createStarterNotebook,
   replacePageTextCanvasItems,
   removeSection,
-  renameSection
+  renameSection,
+  updateTextCanvasItemTags
 } from "./notebook";
 
 describe("Notebook Sections", () => {
@@ -86,7 +87,8 @@ describe("Notebook Sections", () => {
           id: "canvas_item_trace",
           pageId: "page_dsa",
           type: "text",
-          text: "Binary search invariant"
+          text: "Binary search invariant",
+          tags: ["arrays"]
         }
       ],
       [
@@ -103,7 +105,8 @@ describe("Notebook Sections", () => {
         id: "canvas_item_trace",
         pageId: "page_dsa",
         type: "text",
-        text: "Binary search invariant"
+        text: "Binary search invariant",
+        tags: ["arrays"]
       }
     ]);
     expect(notebookWithText.canvasRegions[0]?.bounds).toEqual({
@@ -112,6 +115,46 @@ describe("Notebook Sections", () => {
       width: 260,
       height: 64
     });
+  });
+
+  it("normalizes optional Tags on text Canvas Items", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithText = replacePageTextCanvasItems(
+      notebookWithPage,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_trace",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Binary search invariant",
+          tags: []
+        }
+      ],
+      []
+    );
+    const notebookWithTags = updateTextCanvasItemTags(
+      notebookWithText,
+      "canvas_item_trace",
+      [
+        " arrays ",
+        "",
+        "arrays",
+        "binary search"
+      ]
+    );
+
+    expect(notebookWithTags.canvasItems[0]?.tags).toEqual([
+      "arrays",
+      "binary search"
+    ]);
   });
 
   it("rejects blank Pages for unknown Sections", () => {

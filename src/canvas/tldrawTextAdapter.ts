@@ -111,7 +111,8 @@ export const textCanvasSnapshotFromTldrawShapes = (
       id: canvasItemId,
       pageId,
       type: "text",
-      text
+      text,
+      tags: []
     });
     regions.push({
       pageId,

@@ -14,7 +14,8 @@ describe("tldraw text adapter", () => {
           id: "canvas_item_invariant",
           pageId: "page_dsa",
           type: "text",
-          text: "Binary search invariant"
+          text: "Binary search invariant",
+          tags: ["arrays"]
         }
       ],
       [
@@ -87,7 +88,8 @@ describe("tldraw text adapter", () => {
           id: "canvas_item_bfs",
           pageId: "page_dsa",
           type: "text",
-          text: "Queue BFS notes"
+          text: "Queue BFS notes",
+          tags: []
         }
       ],
       regions: [

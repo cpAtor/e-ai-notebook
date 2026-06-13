@@ -36,7 +36,8 @@ import {
   renameSection,
   removeSection,
   Section,
-  SectionId
+  SectionId,
+  updateTextCanvasItemTags
 } from "./domain/notebook";
 import {
   createNotebookStore,
@@ -255,6 +256,19 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
+  const handleTextCanvasItemTagsChange = (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      updateTextCanvasItemTags(
+        currentNotebook,
+        canvasItemId,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
   const updateNotebook = (updater: (currentNotebook: Notebook) => Notebook) => {
     if (notebook === null) {
       return;
@@ -402,6 +416,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             highlightedCanvasItemId={highlightedCanvasItemId}
             onNotebookOpen={handleNotebookOpen}
             onPageTextCanvasChange={handlePageTextCanvasChange}
+            onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
           />
         )}
       </section>
@@ -502,6 +517,10 @@ interface ActivePageViewProps {
     pageId: PageId,
     snapshot: PageTextCanvasSnapshot
   ) => void;
+  readonly onTextCanvasItemTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
 }
 
 const ActivePageView = ({
@@ -509,7 +528,8 @@ const ActivePageView = ({
   notebook,
   highlightedCanvasItemId,
   onNotebookOpen,
-  onPageTextCanvasChange
+  onPageTextCanvasChange,
+  onTextCanvasItemTagsChange
 }: ActivePageViewProps) => {
   if (activePage.kind === "invalid-section") {
     return (
@@ -555,6 +575,7 @@ const ActivePageView = ({
         notebook={notebook}
         highlightedCanvasItemId={highlightedCanvasItemId}
         onPageTextCanvasChange={onPageTextCanvasChange}
+        onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
       />
       <button type="button" onClick={onNotebookOpen}>
         Back to Notebook
@@ -571,13 +592,18 @@ interface PageTextCanvasProps {
     pageId: PageId,
     snapshot: PageTextCanvasSnapshot
   ) => void;
+  readonly onTextCanvasItemTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
 }
 
 const PageTextCanvas = ({
   page,
   notebook,
   highlightedCanvasItemId,
-  onPageTextCanvasChange
+  onPageTextCanvasChange,
+  onTextCanvasItemTagsChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
   const initialTextItems = useMemo(
@@ -654,6 +680,7 @@ const PageTextCanvas = ({
   );
 
   return (
+    <>
     <div
       className="tldraw-canvas"
       data-testid="tldraw-page-canvas"
@@ -673,6 +700,59 @@ const PageTextCanvas = ({
         />
       ) : null}
       <Tldraw autoFocus initialState="text" onMount={handleMount} />
+    </div>
+    <TextCanvasItemTags
+      pageTextItems={initialTextItems}
+      onTagsChange={onTextCanvasItemTagsChange}
+    />
+    </>
+  );
+};
+
+interface TextCanvasItemTagsProps {
+  readonly pageTextItems: readonly Notebook["canvasItems"][number][];
+  readonly onTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+}
+
+const TextCanvasItemTags = ({
+  pageTextItems,
+  onTagsChange
+}: TextCanvasItemTagsProps) => {
+  const [tagDrafts, setTagDrafts] = useState<Partial<Record<CanvasItemId, string>>>(
+    {}
+  );
+
+  if (pageTextItems.length === 0) {
+    return null;
+  }
+
+  const handleTagDraftChange = (canvasItemId: CanvasItemId, tagDraft: string) => {
+    setTagDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [canvasItemId]: tagDraft
+    }));
+    onTagsChange(canvasItemId, tagDraft);
+  };
+
+  return (
+    <div className="text-item-tags" aria-label="Text Canvas Item Tags">
+      <h4>Optional Tags</h4>
+      <p>
+        Add comma-separated Tags to text Rough Work without changing the canvas.
+      </p>
+      {pageTextItems.map((textItem) => (
+        <label key={textItem.id} htmlFor={`${textItem.id}-tags`}>
+          Tags for {textItem.text}
+          <input
+            id={`${textItem.id}-tags`}
+            value={tagDrafts[textItem.id] ?? textItem.tags.join(", ")}
+            placeholder="e.g. graphs, bfs"
+            onChange={(event) =>
+              handleTagDraftChange(textItem.id, event.target.value)
+            }
+          />
+        </label>
+      ))}
     </div>
   );
 };
@@ -701,7 +781,7 @@ const LocalSearch = ({
       </p>
     </div>
     <label className="search-field" htmlFor="notebook-search">
-      Search text Canvas Items, Page titles, and Section paths
+      Search text Canvas Items, Tags, Page titles, and Section paths
       <input
         id="notebook-search"
         value={query}
@@ -719,6 +799,11 @@ const LocalSearch = ({
             <div>
               <strong>{result.notebookPath}</strong>
               <span>{result.sourceLabel}</span>
+              {result.matchedTags.length > 0 ? (
+                <span>
+                  Matched Tags: {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                </span>
+              ) : null}
               <p>{result.snippet}</p>
             </div>
             <button type="button" onClick={() => onResultOpen(result)}>
@@ -733,6 +818,9 @@ const LocalSearch = ({
 
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;
+
+const tagsFromDraft = (draft: string): readonly string[] =>
+  draft.split(",").map((tag) => tag.trim());
 
 const parsePageRoute = (pathname: string): PageRoute => {
   const match = /^\/sections\/([^/]+)\/pages\/([^/]+)\/?$/.exec(pathname);

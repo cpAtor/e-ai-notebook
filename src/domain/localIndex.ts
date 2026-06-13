@@ -18,6 +18,7 @@ export interface LocalIndexEntry {
   readonly canvasRegion: CanvasRegion | null;
   readonly searchableText: string;
   readonly sourceLabel: string;
+  readonly tags: readonly string[];
 }
 
 export interface SearchResult {
@@ -29,6 +30,7 @@ export interface SearchResult {
   readonly notebookPath: string;
   readonly sourceLabel: string;
   readonly snippet: string;
+  readonly matchedTags: readonly string[];
 }
 
 export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] =>
@@ -51,6 +53,7 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
       canvasRegion: null,
       searchableText: pagePathText,
       sourceLabel: "Notebook path",
+      tags: [],
     };
 
     const textEntries = notebook.canvasItems
@@ -68,8 +71,9 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
             (region) =>
               region.pageId === page.id && region.canvasItemId === canvasItem.id
           ) ?? null,
-        searchableText: `${pagePathText} ${canvasItem.text}`,
+        searchableText: `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`,
         sourceLabel: "Text Canvas Item",
+        tags: canvasItem.tags,
       }));
 
     return [pageEntry, ...textEntries];
@@ -96,6 +100,9 @@ export const searchLocalIndex = (
       notebookPath: `${entry.notebookTitle} / ${entry.sectionTitle} / ${entry.pageTitle}`,
       sourceLabel: entry.sourceLabel,
       snippet: snippetForQuery(entry.searchableText, query),
+      matchedTags: entry.tags.filter((tag) =>
+        normalizeSearchText(tag).includes(query)
+      ),
     }));
 };
 

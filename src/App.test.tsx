@@ -229,7 +229,8 @@ describe("App", () => {
           id: "canvas_item_trace",
           pageId: "page_dsa",
           type: "text",
-          text: "Binary search invariant"
+          text: "Binary search invariant",
+          tags: []
         }
       ],
       [
@@ -257,5 +258,56 @@ describe("App", () => {
     expect(
       await screen.findByLabelText("Highlighted Canvas Region")
     ).toBeInTheDocument();
+  });
+
+  it("tags text Rough Work and shows matched Tags in Search Results", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithText = replacePageTextCanvasItems(
+      notebookWithPage,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_trace",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Binary search invariant",
+          tags: []
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_trace",
+          bounds: { x: 120, y: 80, width: 260, height: 64 }
+        }
+      ]
+    );
+
+    const { store } = await renderApp(notebookWithText);
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.click(screen.getByRole("button", { name: "Open Page" }));
+    await user.type(
+      await screen.findByLabelText("Tags for Binary search invariant"),
+      "arrays, invariant"
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.type(screen.getByLabelText(/Search text Canvas Items/), "arrays");
+
+    expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
+    await waitFor(async () => {
+      const reloadedNotebook = await store.loadNotebook();
+      expect(reloadedNotebook.canvasItems[0]?.tags).toEqual([
+        "arrays",
+        "invariant"
+      ]);
+    });
   });
 });

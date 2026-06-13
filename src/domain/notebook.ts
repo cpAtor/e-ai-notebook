@@ -15,6 +15,7 @@ export interface TextCanvasItem {
   readonly pageId: PageId;
   readonly type: "text";
   readonly text: string;
+  readonly tags: readonly string[];
 }
 
 export interface CanvasRegion {
@@ -169,12 +170,47 @@ export const replacePageTextCanvasItems = (
     ...notebook,
     canvasItems: [
       ...notebook.canvasItems.filter((canvasItem) => canvasItem.pageId !== pageId),
-      ...nextTextItems
+      ...nextTextItems.map((nextTextItem) => {
+        const previousTextItem = notebook.canvasItems.find(
+          (canvasItem) => canvasItem.id === nextTextItem.id
+        );
+
+        return {
+          ...nextTextItem,
+          tags:
+            nextTextItem.tags.length > 0
+              ? normalizeTags(nextTextItem.tags)
+              : (previousTextItem?.tags ?? [])
+        };
+      })
     ],
     canvasRegions: [
       ...notebook.canvasRegions.filter((region) => region.pageId !== pageId),
       ...nextRegions
     ]
+  };
+};
+
+export const updateTextCanvasItemTags = (
+  notebook: Notebook,
+  canvasItemId: CanvasItemId,
+  nextTags: readonly string[]
+): Notebook => {
+  const textItemExists = notebook.canvasItems.some(
+    (canvasItem) => canvasItem.id === canvasItemId
+  );
+
+  if (!textItemExists) {
+    throw new Error("Cannot tag an unknown Text Canvas Item.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: notebook.canvasItems.map((canvasItem) =>
+      canvasItem.id === canvasItemId
+        ? { ...canvasItem, tags: normalizeTags(nextTags) }
+        : canvasItem
+    )
   };
 };
 
@@ -205,4 +241,12 @@ const normalizeSectionTitle = (title: string): string => {
   }
 
   return trimmedTitle;
+};
+
+export const normalizeTags = (tags: readonly string[]): readonly string[] => {
+  const normalizedTags = tags
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
+
+  return [...new Set(normalizedTags)];
 };

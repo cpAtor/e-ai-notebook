@@ -24,7 +24,8 @@ describe("Local Index", () => {
           id: "canvas_item_trace",
           pageId: "page_dsa",
           type: "text",
-          text: "Binary search invariant"
+          text: "Binary search invariant",
+          tags: ["arrays"]
         }
       ],
       [
@@ -54,10 +55,11 @@ describe("Local Index", () => {
         sourceLabel: "Text Canvas Item"
       })
     ]);
-    expect(searchLocalIndex(index, "invariant")).toEqual([
+    expect(searchLocalIndex(index, "arrays")).toEqual([
       expect.objectContaining({
         id: "text:canvas_item_trace",
         canvasItemId: "canvas_item_trace",
+        matchedTags: ["arrays"],
         canvasRegion: {
           pageId: "page_dsa",
           canvasItemId: "canvas_item_trace",

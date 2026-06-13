@@ -50,7 +50,8 @@ export const notebookSchemaV2 = notebookSchemaV1.extend({
         id: canvasItemIdSchema,
         pageId: pageIdSchema,
         type: z.literal("text"),
-        text: z.string()
+        text: z.string(),
+        tags: z.array(z.string()).default([])
       })
     )
     .default([]),
