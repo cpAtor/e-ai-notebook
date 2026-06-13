@@ -525,6 +525,74 @@ describe("App", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("creates, edits, reloads, searches, and highlights Diagram Items for system design", async () => {
+    const user = userEvent.setup();
+    const firstRender = await renderApp();
+
+    const systemDesignRow = (
+      await screen.findByDisplayValue("System Design")
+    ).closest("li");
+
+    if (systemDesignRow === null) {
+      throw new Error("Expected System Design Section row.");
+    }
+
+    await user.click(
+      within(systemDesignRow).getByRole("button", { name: "New Blank Page" })
+    );
+    await user.selectOptions(
+      await screen.findByLabelText("Diagram Item type"),
+      "arrow"
+    );
+    await user.type(
+      screen.getByLabelText("Diagram Item label"),
+      "API Gateway publishes to queue"
+    );
+    await user.type(screen.getByLabelText("Diagram Tags"), "backpressure, async");
+    await user.click(screen.getByRole("button", { name: "Add Diagram Item" }));
+
+    expect(
+      await screen.findByDisplayValue("API Gateway publishes to queue")
+    ).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Diagram Item kind"), "sticky-note");
+    await user.clear(screen.getByLabelText("Edit Diagram Item label"));
+    await user.type(
+      screen.getByLabelText("Edit Diagram Item label"),
+      "Queue absorbs write spikes"
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+
+    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
+    expect(screen.getByText("Matched Tags: #backpressure")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
+    ).toBeInTheDocument();
+    await waitFor(async () => {
+      const reloadedNotebook = await firstRender.store.loadNotebook();
+      expect(reloadedNotebook.canvasItems).toContainEqual({
+        id: expect.stringMatching(/^canvas_item_/),
+        pageId: expect.stringMatching(/^page_/),
+        type: "diagram",
+        kind: "sticky-note",
+        label: "Queue absorbs write spikes",
+        tags: ["backpressure", "async"]
+      });
+    });
+
+    const pagePath = window.location.pathname;
+    firstRender.unmount();
+    firstRender.store.close();
+    window.history.replaceState({}, "", pagePath);
+    await renderApp();
+
+    expect(
+      await screen.findByDisplayValue("Queue absorbs write spikes")
+    ).toBeInTheDocument();
+  });
+
   it("shows Freehand Drawing controls without OCR or searchable handwriting claims", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();

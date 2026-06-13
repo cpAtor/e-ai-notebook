@@ -60,12 +60,24 @@ export interface FreehandDrawingCanvasItem {
   readonly shape: FreehandDrawingShape;
 }
 
+export type DiagramItemKind = "box" | "arrow" | "label" | "sticky-note";
+
+export interface DiagramCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "diagram";
+  readonly kind: DiagramItemKind;
+  readonly label: string;
+  readonly tags: readonly string[];
+}
+
 export type CanvasItem =
   | TextCanvasItem
   | LinkCardCanvasItem
   | CodeBlockCanvasItem
   | ImageCanvasItem
-  | FreehandDrawingCanvasItem;
+  | FreehandDrawingCanvasItem
+  | DiagramCanvasItem;
 
 export interface CanvasRegion {
   readonly pageId: PageId;
@@ -486,6 +498,81 @@ export const updateImageCanvasItemMetadata = (
   };
 };
 
+export const addDiagramCanvasItem = (
+  notebook: Notebook,
+  pageId: PageId,
+  canvasItemId: CanvasItemId,
+  kind: DiagramItemKind,
+  label: string,
+  tags: readonly string[]
+): Notebook => {
+  const pageExists = notebook.pages.some((page) => page.id === pageId);
+  const normalizedLabel = normalizeDiagramLabel(label);
+
+  if (!pageExists) {
+    throw new Error("Cannot add a Diagram Item for an unknown Page.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: [
+      ...notebook.canvasItems,
+      {
+        id: canvasItemId,
+        pageId,
+        type: "diagram",
+        kind,
+        label: normalizedLabel,
+        tags: normalizeTags(tags)
+      }
+    ],
+    canvasRegions: [
+      ...notebook.canvasRegions,
+      {
+        pageId,
+        canvasItemId,
+        bounds: boundsForDiagramItem(kind, diagramItemCountForPage(notebook, pageId))
+      }
+    ]
+  };
+};
+
+export const updateDiagramCanvasItem = (
+  notebook: Notebook,
+  canvasItemId: CanvasItemId,
+  kind: DiagramItemKind,
+  label: string,
+  nextTags: readonly string[]
+): Notebook => {
+  const normalizedLabel = normalizeDiagramLabel(label);
+  const diagramItemExists = notebook.canvasItems.some(
+    (canvasItem) => canvasItem.id === canvasItemId && canvasItem.type === "diagram"
+  );
+
+  if (!diagramItemExists) {
+    throw new Error("Cannot edit an unknown Diagram Item.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: notebook.canvasItems.map((canvasItem) =>
+      canvasItem.id === canvasItemId && canvasItem.type === "diagram"
+        ? {
+            ...canvasItem,
+            kind,
+            label: normalizedLabel,
+            tags: normalizeTags(nextTags)
+          }
+        : canvasItem
+    ),
+    canvasRegions: notebook.canvasRegions.map((region) =>
+      region.canvasItemId === canvasItemId
+        ? { ...region, bounds: { ...region.bounds, ...sizeForDiagramItem(kind) } }
+        : region
+    )
+  };
+};
+
 export const createSectionId = (): SectionId => {
   if (globalThis.crypto?.randomUUID !== undefined) {
     return `section_${globalThis.crypto.randomUUID()}`;
@@ -551,6 +638,16 @@ const normalizeCodeBlockCode = (code: string): string => {
   return trimmedCode;
 };
 
+const normalizeDiagramLabel = (label: string): string => {
+  const trimmedLabel = label.trim();
+
+  if (trimmedLabel.length === 0) {
+    throw new Error("Diagram Item label cannot be empty.");
+  }
+
+  return trimmedLabel;
+};
+
 const normalizeImageMediaType = (mediaType: string): string => {
   const trimmedMediaType = mediaType.trim().toLowerCase();
 
@@ -570,4 +667,36 @@ const normalizeImageDataUrl = (dataUrl: string, mediaType: string): string => {
   }
 
   return trimmedDataUrl;
+};
+
+const diagramItemCountForPage = (notebook: Notebook, pageId: PageId): number =>
+  notebook.canvasItems.filter(
+    (canvasItem) => canvasItem.pageId === pageId && canvasItem.type === "diagram"
+  ).length;
+
+const boundsForDiagramItem = (
+  kind: DiagramItemKind,
+  existingDiagramItemCount: number
+): CanvasBounds => ({
+  x: 420,
+  y: 80 + existingDiagramItemCount * 120,
+  ...sizeForDiagramItem(kind)
+});
+
+const sizeForDiagramItem = (
+  kind: DiagramItemKind
+): Pick<CanvasBounds, "width" | "height"> => {
+  if (kind === "arrow") {
+    return { width: 260, height: 48 };
+  }
+
+  if (kind === "label") {
+    return { width: 220, height: 56 };
+  }
+
+  if (kind === "sticky-note") {
+    return { width: 220, height: 160 };
+  }
+
+  return { width: 240, height: 120 };
 };

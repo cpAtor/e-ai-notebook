@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addDiagramCanvasItem,
   addImageCanvasItem,
   addBlankPage,
   addLinkCardCanvasItem,
@@ -155,6 +156,34 @@ describe("Notebook storage", () => {
 
     await expect(store.loadNotebook()).resolves.toEqual(notebookWithImage);
     expect(() => notebookSchemaV2.parse(notebookWithImage)).not.toThrow();
+    store.close();
+  });
+
+  it("persists Diagram Item source data through the versioned Notebook schema", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+    const systemDesign = notebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithPage = addBlankPage(notebook, systemDesign.id, "page_design");
+    const notebookWithDiagramItem = addDiagramCanvasItem(
+      notebookWithPage,
+      "page_design",
+      "canvas_item_gateway",
+      "box",
+      "API Gateway",
+      ["routing"]
+    );
+
+    await store.saveNotebook(notebookWithDiagramItem);
+
+    await expect(store.loadNotebook()).resolves.toEqual(notebookWithDiagramItem);
+    expect(() => notebookSchemaV2.parse(notebookWithDiagramItem)).not.toThrow();
     store.close();
   });
 

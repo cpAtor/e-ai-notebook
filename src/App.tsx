@@ -25,6 +25,7 @@ import {
   type SearchResult
 } from "./domain/localIndex";
 import {
+  addDiagramCanvasItem,
   addCodeBlockCanvasItem,
   addImageCanvasItem,
   addLinkCardCanvasItem,
@@ -35,6 +36,8 @@ import {
   createCanvasItemId,
   createPageId,
   createSectionId,
+  type DiagramCanvasItem,
+  type DiagramItemKind,
   type FreehandDrawingCanvasItem,
   getPage,
   getSection,
@@ -50,6 +53,7 @@ import {
   SectionId,
   type TextCanvasItem,
   updateCodeBlockCanvasItem,
+  updateDiagramCanvasItem,
   updateImageCanvasItemMetadata,
   updateLinkCardCanvasItemTags,
   updateTextCanvasItemTags
@@ -431,6 +435,41 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
+  const handleDiagramItemAdd = (
+    pageId: PageId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      addDiagramCanvasItem(
+        currentNotebook,
+        pageId,
+        createCanvasItemId(),
+        kind,
+        label,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
+  const handleDiagramItemChange = (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      updateDiagramCanvasItem(
+        currentNotebook,
+        canvasItemId,
+        kind,
+        label,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
   const updateNotebook = (updater: (currentNotebook: Notebook) => Notebook) => {
     if (notebook === null) {
       return;
@@ -591,6 +630,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             onNotebookOpen={handleNotebookOpen}
             onCodeBlockAdd={handleCodeBlockAdd}
             onCodeBlockChange={handleCodeBlockChange}
+            onDiagramItemAdd={handleDiagramItemAdd}
+            onDiagramItemChange={handleDiagramItemChange}
             onImageItemAdd={handleImageItemAdd}
             onImageItemMetadataChange={handleImageItemMetadataChange}
             onLinkCardAdd={handleLinkCardAdd}
@@ -703,6 +744,18 @@ interface ActivePageViewProps {
     code: string,
     tagDraft: string
   ) => void;
+  readonly onDiagramItemAdd: (
+    pageId: PageId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
   readonly onLinkCardAdd: (
     pageId: PageId,
     url: string,
@@ -742,6 +795,8 @@ const ActivePageView = ({
   onNotebookOpen,
   onCodeBlockAdd,
   onCodeBlockChange,
+  onDiagramItemAdd,
+  onDiagramItemChange,
   onImageItemAdd,
   onImageItemMetadataChange,
   onLinkCardAdd,
@@ -801,6 +856,13 @@ const ActivePageView = ({
         highlightedCanvasItemId={highlightedCanvasItemId}
         onImageItemAdd={onImageItemAdd}
         onImageItemMetadataChange={onImageItemMetadataChange}
+      />
+      <PageDiagramItems
+        page={activePage.page}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        onDiagramItemAdd={onDiagramItemAdd}
+        onDiagramItemChange={onDiagramItemChange}
       />
       <PageCodeBlocks
         page={activePage.page}
@@ -1374,6 +1436,209 @@ const EditableImageItem = ({
   );
 };
 
+interface PageDiagramItemsProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onDiagramItemAdd: (
+    pageId: PageId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+}
+
+const DIAGRAM_ITEM_KINDS: readonly DiagramItemKind[] = [
+  "box",
+  "arrow",
+  "label",
+  "sticky-note"
+];
+
+const PageDiagramItems = ({
+  page,
+  notebook,
+  highlightedCanvasItemId,
+  onDiagramItemAdd,
+  onDiagramItemChange
+}: PageDiagramItemsProps) => {
+  const [kind, setKind] = useState<DiagramItemKind>("box");
+  const [label, setLabel] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const pageDiagramItems = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is DiagramCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "diagram"
+      ),
+    [notebook.canvasItems, page.id]
+  );
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onDiagramItemAdd(page.id, kind, label, tagDraft);
+    setKind("box");
+    setLabel("");
+    setTagDraft("");
+  };
+
+  return (
+    <section className="diagram-item-panel" aria-labelledby="diagram-items-title">
+      <div>
+        <h4 id="diagram-items-title">Diagram Items</h4>
+        <p>
+          Add searchable boxes, arrows, labels, and sticky notes for system design
+          diagrams. Labels and Tags use app-owned Canvas Regions for Search Results.
+        </p>
+      </div>
+      <form className="diagram-item-form" onSubmit={handleSubmit}>
+        <label htmlFor="diagram-item-kind">
+          Diagram Item type
+          <select
+            id="diagram-item-kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as DiagramItemKind)}
+          >
+            {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
+              <option key={diagramKind} value={diagramKind}>
+                {diagramKindLabel(diagramKind)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label htmlFor="diagram-item-label">
+          Diagram Item label
+          <input
+            id="diagram-item-label"
+            required
+            placeholder="e.g. API Gateway forwards writes"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </label>
+        <label htmlFor="diagram-item-tags">
+          Diagram Tags
+          <input
+            id="diagram-item-tags"
+            placeholder="e.g. queues, availability"
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={label.trim().length === 0}>
+          Add Diagram Item
+        </button>
+      </form>
+      {pageDiagramItems.length > 0 ? (
+        <ul className="diagram-item-list" aria-label="Diagram Items on this Page">
+          {pageDiagramItems.map((diagramItem) => (
+            <EditableDiagramItem
+              diagramItem={diagramItem}
+              isHighlighted={highlightedCanvasItemId === diagramItem.id}
+              key={diagramItem.id}
+              onDiagramItemChange={onDiagramItemChange}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+};
+
+interface EditableDiagramItemProps {
+  readonly diagramItem: DiagramCanvasItem;
+  readonly isHighlighted: boolean;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+}
+
+const EditableDiagramItem = ({
+  diagramItem,
+  isHighlighted,
+  onDiagramItemChange
+}: EditableDiagramItemProps) => {
+  const [kindDraft, setKindDraft] = useState<DiagramItemKind>(diagramItem.kind);
+  const [labelDraft, setLabelDraft] = useState(diagramItem.label);
+  const [tagDraft, setTagDraft] = useState(diagramItem.tags.join(", "));
+
+  const handleKindChange = (nextKind: DiagramItemKind) => {
+    setKindDraft(nextKind);
+
+    if (labelDraft.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, nextKind, labelDraft, tagDraft);
+    }
+  };
+
+  const handleLabelChange = (nextLabel: string) => {
+    setLabelDraft(nextLabel);
+
+    if (nextLabel.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, kindDraft, nextLabel, tagDraft);
+    }
+  };
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+
+    if (labelDraft.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, kindDraft, labelDraft, nextTagDraft);
+    }
+  };
+
+  return (
+    <li className={isHighlighted ? "diagram-item-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Diagram Item Canvas Region">
+          Highlighted Diagram Item
+        </span>
+      ) : null}
+      <strong>{diagramKindLabel(kindDraft)}</strong>
+      <label htmlFor={`${diagramItem.id}-kind`}>
+        Diagram Item kind
+        <select
+          id={`${diagramItem.id}-kind`}
+          value={kindDraft}
+          onChange={(event) => handleKindChange(event.target.value as DiagramItemKind)}
+        >
+          {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
+            <option key={diagramKind} value={diagramKind}>
+              {diagramKindLabel(diagramKind)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label htmlFor={`${diagramItem.id}-label`}>
+        Edit Diagram Item label
+        <input
+          id={`${diagramItem.id}-label`}
+          value={labelDraft}
+          placeholder="Diagram label"
+          onChange={(event) => handleLabelChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${diagramItem.id}-tags`}>
+        Tags for this Diagram Item
+        <input
+          id={`${diagramItem.id}-tags`}
+          value={tagDraft}
+          placeholder="e.g. queues, availability"
+          onChange={(event) => handleTagsChange(event.target.value)}
+        />
+      </label>
+    </li>
+  );
+};
+
 interface PageCodeBlocksProps {
   readonly page: Page;
   readonly notebook: Notebook;
@@ -1592,6 +1857,14 @@ const pagePath = (sectionId: SectionId, pageId: PageId) =>
 
 const tagsFromDraft = (draft: string): readonly string[] =>
   draft.split(",").map((tag) => tag.trim());
+
+const diagramKindLabel = (kind: DiagramItemKind): string => {
+  if (kind === "sticky-note") {
+    return "Sticky note";
+  }
+
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+};
 
 const parsePageRoute = (pathname: string): PageRoute => {
   const match = /^\/sections\/([^/]+)\/pages\/([^/]+)\/?$/.exec(pathname);

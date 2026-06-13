@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addDiagramCanvasItem,
   addImageCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
@@ -11,6 +12,7 @@ import {
   removeSection,
   renameSection,
   updateCodeBlockCanvasItem,
+  updateDiagramCanvasItem,
   updateImageCanvasItemMetadata,
   updateTextCanvasItemTags
 } from "./notebook";
@@ -387,6 +389,52 @@ describe("Notebook Sections", () => {
     });
   });
 
+  it("adds and edits Diagram Items with labels, Tags, and app-owned Canvas Regions", () => {
+    const starterNotebook = createStarterNotebook();
+    const systemDesign = starterNotebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithPage = addBlankPage(
+      starterNotebook,
+      systemDesign.id,
+      "page_design"
+    );
+    const notebookWithDiagramItem = addDiagramCanvasItem(
+      notebookWithPage,
+      "page_design",
+      "canvas_item_gateway",
+      "box",
+      "API Gateway",
+      [" system design ", "system design", "routing"]
+    );
+    const editedNotebook = updateDiagramCanvasItem(
+      notebookWithDiagramItem,
+      "canvas_item_gateway",
+      "sticky-note",
+      "API Gateway retries writes",
+      ["reliability"]
+    );
+
+    expect(editedNotebook.canvasItems).toContainEqual({
+      id: "canvas_item_gateway",
+      pageId: "page_design",
+      type: "diagram",
+      kind: "sticky-note",
+      label: "API Gateway retries writes",
+      tags: ["reliability"]
+    });
+    expect(editedNotebook.canvasRegions).toContainEqual({
+      pageId: "page_design",
+      canvasItemId: "canvas_item_gateway",
+      bounds: { x: 420, y: 80, width: 220, height: 160 }
+    });
+  });
+
   it("rejects blank Pages for unknown Sections", () => {
     expect(() =>
       addBlankPage(createStarterNotebook(), "section_missing", "page_missing")
@@ -472,5 +520,38 @@ describe("Notebook Sections", () => {
         []
       )
     ).toThrow("Image Item media type must be an image.");
+  });
+
+  it("rejects Diagram Items for unknown Pages or blank labels", () => {
+    expect(() =>
+      addDiagramCanvasItem(
+        createStarterNotebook(),
+        "page_missing",
+        "canvas_item_missing",
+        "box",
+        "Gateway",
+        []
+      )
+    ).toThrow("Cannot add a Diagram Item for an unknown Page.");
+
+    const starterNotebook = createStarterNotebook();
+    const systemDesign = starterNotebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    expect(() =>
+      addDiagramCanvasItem(
+        addBlankPage(starterNotebook, systemDesign.id, "page_design"),
+        "page_design",
+        "canvas_item_empty",
+        "label",
+        "   ",
+        []
+      )
+    ).toThrow("Diagram Item label cannot be empty.");
   });
 });

@@ -22,6 +22,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -42,6 +43,7 @@ button:hover {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid #d1c8b5;
@@ -57,6 +59,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: #5468ff;
   outline: 3px solid rgba(84, 104, 255, 0.18);
@@ -190,6 +193,8 @@ textarea:focus {
 .search-field,
 .code-block-form label,
 .code-block-list label,
+.diagram-item-form label,
+.diagram-item-list label,
 .image-item-form label,
 .image-item-list label,
 .link-card-form label,
@@ -297,6 +302,8 @@ textarea:focus {
 .search-result span,
 .search-result p,
 .code-block-panel p,
+.diagram-item-panel p,
+.diagram-item-list label,
 .code-block-list label,
 .image-item-panel p,
 .link-card-panel p,
@@ -346,6 +353,7 @@ textarea:focus {
 }
 
 .code-block-panel,
+.diagram-item-panel,
 .image-item-panel,
 .link-card-panel {
   display: grid;
@@ -359,6 +367,8 @@ textarea:focus {
 
 .code-block-panel h4,
 .code-block-panel p,
+.diagram-item-panel h4,
+.diagram-item-panel p,
 .image-item-panel h4,
 .image-item-panel p,
 .link-card-panel h4,
@@ -368,6 +378,8 @@ textarea:focus {
 
 .code-block-form,
 .code-block-list,
+.diagram-item-form,
+.diagram-item-list,
 .image-item-form,
 .image-item-list,
 .link-card-form,
@@ -378,6 +390,8 @@ textarea:focus {
 
 .code-block-form label,
 .code-block-list label,
+.diagram-item-form label,
+.diagram-item-list label,
 .image-item-form label,
 .image-item-list label,
 .link-card-form label,
@@ -387,6 +401,7 @@ textarea:focus {
 }
 
 .code-block-list,
+.diagram-item-list,
 .image-item-list,
 .link-card-list {
   padding: 0;
@@ -395,6 +410,7 @@ textarea:focus {
 }
 
 .code-block-list li,
+.diagram-item-list li,
 .image-item-list li,
 .link-card-list li {
   display: grid;
@@ -436,12 +452,14 @@ textarea:focus {
 }
 
 .code-block-list__item--highlighted,
+.diagram-item-list__item--highlighted,
 .image-item-list__item--highlighted {
   border-color: #f5a400;
   box-shadow: 0 0 0 4px rgba(245, 164, 0, 0.18);
 }
 
 .code-block-list__item--highlighted span,
+.diagram-item-list__item--highlighted span,
 .image-item-list__item--highlighted span {
   color: #6a4500;
   font-size: 0.85rem;

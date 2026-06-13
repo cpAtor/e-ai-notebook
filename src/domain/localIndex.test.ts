@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addDiagramCanvasItem,
   addImageCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
@@ -206,6 +207,55 @@ describe("Local Index", () => {
       })
     ]);
     expect(searchLocalIndex(index, "secret-bytes")).toEqual([]);
+  });
+
+  it("indexes Diagram Item labels and Tags with Canvas Region citations", () => {
+    const starterNotebook = createStarterNotebook();
+    const systemDesign = starterNotebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithPage = addBlankPage(
+      starterNotebook,
+      systemDesign.id,
+      "page_design"
+    );
+    const notebookWithDiagramItem = addDiagramCanvasItem(
+      notebookWithPage,
+      "page_design",
+      "canvas_item_queue",
+      "arrow",
+      "API Gateway publishes to queue",
+      ["backpressure", "async"]
+    );
+    const index = buildLocalIndex(notebookWithDiagramItem);
+
+    expect(index.map((entry) => entry.id)).toEqual([
+      "page:page_design",
+      "diagram:canvas_item_queue"
+    ]);
+    expect(searchLocalIndex(index, "publishes")).toEqual([
+      expect.objectContaining({
+        id: "diagram:canvas_item_queue",
+        canvasItemId: "canvas_item_queue",
+        sourceLabel: "Diagram Item",
+        canvasRegion: {
+          pageId: "page_design",
+          canvasItemId: "canvas_item_queue",
+          bounds: { x: 420, y: 80, width: 260, height: 48 }
+        },
+        snippet: expect.stringContaining("API Gateway publishes to queue")
+      })
+    ]);
+    expect(searchLocalIndex(index, "backpressure")).toEqual([
+      expect.objectContaining({
+        matchedTags: ["backpressure"]
+      })
+    ]);
   });
 
   it("keeps Freehand Drawings addressable but out of the Local Index", () => {

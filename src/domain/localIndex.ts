@@ -126,6 +126,10 @@ const searchableTextForCanvasItem = (
     return `${pagePathText} ${canvasItem.caption} ${canvasItem.tags.join(" ")}`;
   }
 
+  if (canvasItem.type === "diagram") {
+    return `${pagePathText} ${canvasItem.kind} ${canvasItem.label} ${canvasItem.tags.join(" ")}`;
+  }
+
   return `${pagePathText} ${canvasItem.code} ${canvasItem.tags.join(" ")}`;
 };
 
@@ -144,6 +148,10 @@ const sourceLabelForCanvasItem = (canvasItem: CanvasItem): string => {
 
   if (canvasItem.type === "code-block") {
     return "Code Block";
+  }
+
+  if (canvasItem.type === "diagram") {
+    return "Diagram Item";
   }
 
   return "Freehand Drawing";

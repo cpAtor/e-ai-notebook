@@ -81,6 +81,14 @@ export const notebookSchemaV2 = notebookSchemaV1.extend({
         z.object({
           id: canvasItemIdSchema,
           pageId: pageIdSchema,
+          type: z.literal("diagram"),
+          kind: z.enum(["box", "arrow", "label", "sticky-note"]),
+          label: z.string().min(1),
+          tags: z.array(z.string()).default([])
+        }),
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
           type: z.literal("freehand-drawing"),
           shape: z.object({
             type: z.literal("draw"),
