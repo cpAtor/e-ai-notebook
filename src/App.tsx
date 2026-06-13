@@ -22,10 +22,12 @@ import {
   type SearchResult
 } from "./domain/localIndex";
 import {
+  addCodeBlockCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
   type CanvasItemId,
+  type CodeBlockCanvasItem,
   createCanvasItemId,
   createPageId,
   createSectionId,
@@ -41,6 +43,7 @@ import {
   Section,
   SectionId,
   type TextCanvasItem,
+  updateCodeBlockCanvasItem,
   updateLinkCardCanvasItemTags,
   updateTextCanvasItemTags
 } from "./domain/notebook";
@@ -305,6 +308,37 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
+  const handleCodeBlockAdd = (
+    pageId: PageId,
+    code: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      addCodeBlockCanvasItem(
+        currentNotebook,
+        pageId,
+        createCanvasItemId(),
+        code,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
+  const handleCodeBlockChange = (
+    canvasItemId: CanvasItemId,
+    code: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      updateCodeBlockCanvasItem(
+        currentNotebook,
+        canvasItemId,
+        code,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
   const updateNotebook = (updater: (currentNotebook: Notebook) => Notebook) => {
     if (notebook === null) {
       return;
@@ -451,6 +485,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             notebook={notebook}
             highlightedCanvasItemId={highlightedCanvasItemId}
             onNotebookOpen={handleNotebookOpen}
+            onCodeBlockAdd={handleCodeBlockAdd}
+            onCodeBlockChange={handleCodeBlockChange}
             onLinkCardAdd={handleLinkCardAdd}
             onLinkCardTagsChange={handleLinkCardTagsChange}
             onPageTextCanvasChange={handlePageTextCanvasChange}
@@ -551,6 +587,16 @@ interface ActivePageViewProps {
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onNotebookOpen: () => void;
+  readonly onCodeBlockAdd: (
+    pageId: PageId,
+    code: string,
+    tagDraft: string
+  ) => void;
+  readonly onCodeBlockChange: (
+    canvasItemId: CanvasItemId,
+    code: string,
+    tagDraft: string
+  ) => void;
   readonly onLinkCardAdd: (
     pageId: PageId,
     url: string,
@@ -576,6 +622,8 @@ const ActivePageView = ({
   notebook,
   highlightedCanvasItemId,
   onNotebookOpen,
+  onCodeBlockAdd,
+  onCodeBlockChange,
   onLinkCardAdd,
   onLinkCardTagsChange,
   onPageTextCanvasChange,
@@ -625,6 +673,13 @@ const ActivePageView = ({
         notebook={notebook}
         onLinkCardAdd={onLinkCardAdd}
         onLinkCardTagsChange={onLinkCardTagsChange}
+      />
+      <PageCodeBlocks
+        page={activePage.page}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        onCodeBlockAdd={onCodeBlockAdd}
+        onCodeBlockChange={onCodeBlockChange}
       />
       <PageTextCanvas
         page={activePage.page}
@@ -923,6 +978,160 @@ const PageLinkCards = ({
         </ul>
       ) : null}
     </section>
+  );
+};
+
+interface PageCodeBlocksProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onCodeBlockAdd: (
+    pageId: PageId,
+    code: string,
+    tagDraft: string
+  ) => void;
+  readonly onCodeBlockChange: (
+    canvasItemId: CanvasItemId,
+    code: string,
+    tagDraft: string
+  ) => void;
+}
+
+const PageCodeBlocks = ({
+  page,
+  notebook,
+  highlightedCanvasItemId,
+  onCodeBlockAdd,
+  onCodeBlockChange
+}: PageCodeBlocksProps) => {
+  const [code, setCode] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const pageCodeBlocks = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is CodeBlockCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "code-block"
+      ),
+    [notebook.canvasItems, page.id]
+  );
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onCodeBlockAdd(page.id, code, tagDraft);
+    setCode("");
+    setTagDraft("");
+  };
+
+  return (
+    <section className="code-block-panel" aria-labelledby="code-blocks-title">
+      <div>
+        <h4 id="code-blocks-title">Code Blocks</h4>
+        <p>
+          Capture pseudocode, snippets, or solution drafts as searchable
+          reference material only.
+        </p>
+      </div>
+      <form className="code-block-form" onSubmit={handleSubmit}>
+        <label htmlFor="code-block-content">
+          Code Block content
+          <textarea
+            id="code-block-content"
+            required
+            spellCheck={false}
+            placeholder="e.g. function twoSum(nums, target) { ... }"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
+        </label>
+        <label htmlFor="code-block-tags">
+          Code Block Tags
+          <input
+            id="code-block-tags"
+            placeholder="e.g. arrays, pseudocode"
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={code.trim().length === 0}>
+          Add Code Block
+        </button>
+      </form>
+      {pageCodeBlocks.length > 0 ? (
+        <ul className="code-block-list" aria-label="Code Blocks on this Page">
+          {pageCodeBlocks.map((codeBlock) => (
+            <EditableCodeBlock
+              codeBlock={codeBlock}
+              isHighlighted={highlightedCanvasItemId === codeBlock.id}
+              key={codeBlock.id}
+              onCodeBlockChange={onCodeBlockChange}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+};
+
+interface EditableCodeBlockProps {
+  readonly codeBlock: CodeBlockCanvasItem;
+  readonly isHighlighted: boolean;
+  readonly onCodeBlockChange: (
+    canvasItemId: CanvasItemId,
+    code: string,
+    tagDraft: string
+  ) => void;
+}
+
+const EditableCodeBlock = ({
+  codeBlock,
+  isHighlighted,
+  onCodeBlockChange
+}: EditableCodeBlockProps) => {
+  const [codeDraft, setCodeDraft] = useState(codeBlock.code);
+  const [tagDraft, setTagDraft] = useState(codeBlock.tags.join(", "));
+
+  const handleCodeChange = (nextCode: string) => {
+    setCodeDraft(nextCode);
+
+    if (nextCode.trim().length > 0) {
+      onCodeBlockChange(codeBlock.id, nextCode, tagDraft);
+    }
+  };
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+
+    if (codeDraft.trim().length > 0) {
+      onCodeBlockChange(codeBlock.id, codeDraft, nextTagDraft);
+    }
+  };
+
+  return (
+    <li className={isHighlighted ? "code-block-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Code Block Canvas Region">
+          Highlighted Code Block
+        </span>
+      ) : null}
+      <label htmlFor={`${codeBlock.id}-code`}>
+        Edit Code Block
+        <textarea
+          id={`${codeBlock.id}-code`}
+          spellCheck={false}
+          value={codeDraft}
+          onChange={(event) => handleCodeChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${codeBlock.id}-tags`}>
+        Tags for this Code Block
+        <input
+          id={`${codeBlock.id}-tags`}
+          value={tagDraft}
+          placeholder="e.g. arrays, pseudocode"
+          onChange={(event) => handleTagsChange(event.target.value)}
+        />
+      </label>
+    </li>
   );
 };
 

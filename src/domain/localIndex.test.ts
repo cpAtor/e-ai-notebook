@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addCodeBlockCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   createStarterNotebook,
@@ -110,5 +111,47 @@ describe("Local Index", () => {
       })
     ]);
     expect(searchLocalIndex(index, "article body")).toEqual([]);
+  });
+
+  it("indexes Code Block content and Tags with Canvas Region citations", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      notebookWithPage,
+      "page_dsa",
+      "canvas_item_code_block",
+      "const complement = target - nums[i];",
+      ["two sum", "arrays"]
+    );
+    const index = buildLocalIndex(notebookWithCodeBlock);
+
+    expect(index.map((entry) => entry.id)).toEqual([
+      "page:page_dsa",
+      "code-block:canvas_item_code_block"
+    ]);
+    expect(searchLocalIndex(index, "complement")).toEqual([
+      expect.objectContaining({
+        id: "code-block:canvas_item_code_block",
+        canvasItemId: "canvas_item_code_block",
+        sourceLabel: "Code Block",
+        canvasRegion: {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_code_block",
+          bounds: { x: 0, y: 140, width: 520, height: 220 }
+        },
+        snippet: expect.stringContaining("const complement")
+      })
+    ]);
+    expect(searchLocalIndex(index, "two sum")).toEqual([
+      expect.objectContaining({
+        matchedTags: ["two sum"]
+      })
+    ]);
   });
 });

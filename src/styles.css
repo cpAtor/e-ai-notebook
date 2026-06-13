@@ -170,6 +170,8 @@ textarea:focus {
 .add-section-form label,
 .section-row label,
 .search-field,
+.code-block-form label,
+.code-block-list label,
 .link-card-form label,
 .link-card-list label {
   color: #4d5871;
@@ -274,6 +276,8 @@ textarea:focus {
 .page-canvas p,
 .search-result span,
 .search-result p,
+.code-block-panel p,
+.code-block-list label,
 .link-card-panel p,
 .text-item-tags p,
 .text-item-tags label,
@@ -304,6 +308,7 @@ textarea:focus {
   margin: 1rem 0;
 }
 
+.code-block-panel,
 .link-card-panel {
   display: grid;
   gap: 1rem;
@@ -314,29 +319,37 @@ textarea:focus {
   padding: 1rem;
 }
 
+.code-block-panel h4,
+.code-block-panel p,
 .link-card-panel h4,
 .link-card-panel p {
   margin: 0;
 }
 
+.code-block-form,
+.code-block-list,
 .link-card-form,
 .link-card-list {
   display: grid;
   gap: 0.85rem;
 }
 
+.code-block-form label,
+.code-block-list label,
 .link-card-form label,
 .link-card-list label {
   display: grid;
   gap: 0.5rem;
 }
 
+.code-block-list,
 .link-card-list {
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
+.code-block-list li,
 .link-card-list li {
   display: grid;
   gap: 0.65rem;
@@ -344,6 +357,22 @@ textarea:focus {
   border-radius: 0.85rem;
   background: #ffffff;
   padding: 0.85rem;
+}
+
+.code-block-list textarea {
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.code-block-list__item--highlighted {
+  border-color: #f5a400;
+  box-shadow: 0 0 0 4px rgba(245, 164, 0, 0.18);
+}
+
+.code-block-list__item--highlighted span {
+  color: #6a4500;
+  font-size: 0.85rem;
+  font-weight: 800;
 }
 
 .link-card-list a {

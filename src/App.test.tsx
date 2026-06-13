@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
+  addCodeBlockCanvasItem,
   addBlankPage,
   createStarterNotebook,
   replacePageTextCanvasItems,
@@ -372,5 +373,94 @@ describe("App", () => {
       })
     ).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("creates, edits, reloads, searches, and highlights Code Blocks without runner affordances", async () => {
+    const user = userEvent.setup();
+    const firstRender = await renderApp();
+
+    const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
+
+    if (dsaRow === null) {
+      throw new Error("Expected DSA Section row.");
+    }
+
+    await user.click(
+      within(dsaRow).getByRole("button", { name: "New Blank Page" })
+    );
+    await user.type(
+      await screen.findByLabelText("Code Block content"),
+      "const complement = target - nums[i];"
+    );
+    await user.type(screen.getByLabelText("Code Block Tags"), "arrays, two sum");
+    await user.click(screen.getByRole("button", { name: "Add Code Block" }));
+
+    expect(await screen.findByDisplayValue(/const complement/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /run/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/judge/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sandbox/i)).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Edit Code Block"));
+    await user.type(
+      screen.getByLabelText("Edit Code Block"),
+      "return seen.get(complement);"
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "two sum");
+
+    expect(await screen.findByText("Code Block")).toBeInTheDocument();
+    expect(screen.getByText("Matched Tags: #two sum")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Code Block Canvas Region")
+    ).toBeInTheDocument();
+    await waitFor(async () => {
+      const reloadedNotebook = await firstRender.store.loadNotebook();
+      expect(reloadedNotebook.canvasItems).toContainEqual({
+        id: expect.stringMatching(/^canvas_item_/),
+        pageId: expect.stringMatching(/^page_/),
+        type: "code-block",
+        code: "return seen.get(complement);",
+        tags: ["arrays", "two sum"]
+      });
+    });
+
+    const pagePath = window.location.pathname;
+    firstRender.unmount();
+    firstRender.store.close();
+    window.history.replaceState({}, "", pagePath);
+    await renderApp();
+
+    expect(
+      await screen.findByDisplayValue("return seen.get(complement);")
+    ).toBeInTheDocument();
+  });
+
+  it("searches seeded Code Blocks and opens their highlighted Canvas Region", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      "page_dsa",
+      "canvas_item_code_block",
+      "function bfs(queue) { return queue.shift(); }",
+      ["graphs"]
+    );
+
+    await renderApp(notebookWithCodeBlock);
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "bfs");
+    await user.click(await screen.findByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Code Block Canvas Region")
+    ).toBeInTheDocument();
   });
 });

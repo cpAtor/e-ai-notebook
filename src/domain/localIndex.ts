@@ -1,5 +1,6 @@
 import {
   getSection,
+  type CanvasItem,
   type CanvasItemId,
   type CanvasRegion,
   type Notebook,
@@ -71,12 +72,8 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
             (region) =>
               region.pageId === page.id && region.canvasItemId === canvasItem.id
           ) ?? null,
-        searchableText:
-          canvasItem.type === "text"
-            ? `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`
-            : `${pagePathText} ${canvasItem.url} ${canvasItem.note} ${canvasItem.tags.join(" ")}`,
-        sourceLabel:
-          canvasItem.type === "text" ? "Text Canvas Item" : "Link Card",
+        searchableText: searchableTextForCanvasItem(pagePathText, canvasItem),
+        sourceLabel: sourceLabelForCanvasItem(canvasItem),
         tags: canvasItem.tags,
       }));
 
@@ -111,6 +108,33 @@ export const searchLocalIndex = (
 };
 
 const normalizeSearchText = (text: string): string => text.trim().toLowerCase();
+
+const searchableTextForCanvasItem = (
+  pagePathText: string,
+  canvasItem: CanvasItem
+): string => {
+  if (canvasItem.type === "text") {
+    return `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`;
+  }
+
+  if (canvasItem.type === "link-card") {
+    return `${pagePathText} ${canvasItem.url} ${canvasItem.note} ${canvasItem.tags.join(" ")}`;
+  }
+
+  return `${pagePathText} ${canvasItem.code} ${canvasItem.tags.join(" ")}`;
+};
+
+const sourceLabelForCanvasItem = (canvasItem: CanvasItem): string => {
+  if (canvasItem.type === "text") {
+    return "Text Canvas Item";
+  }
+
+  if (canvasItem.type === "link-card") {
+    return "Link Card";
+  }
+
+  return "Code Block";
+};
 
 const snippetForQuery = (text: string, normalizedQuery: string): string => {
   const normalizedText = text.toLowerCase();

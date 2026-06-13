@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  addCodeBlockCanvasItem,
   addBlankPage,
   addLinkCardCanvasItem,
   createStarterNotebook
@@ -98,6 +99,31 @@ describe("Notebook storage", () => {
 
     await expect(store.loadNotebook()).resolves.toEqual(notebookWithLinkCard);
     expect(() => notebookSchemaV2.parse(notebookWithLinkCard)).not.toThrow();
+    store.close();
+  });
+
+  it("persists Code Block source data through the versioned Notebook schema", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+    const dsa = notebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(notebook, dsa.id, "page_dsa");
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      notebookWithPage,
+      "page_dsa",
+      "canvas_item_code_block",
+      "function dfs(node) { return node.value; }",
+      ["trees"]
+    );
+
+    await store.saveNotebook(notebookWithCodeBlock);
+
+    await expect(store.loadNotebook()).resolves.toEqual(notebookWithCodeBlock);
+    expect(() => notebookSchemaV2.parse(notebookWithCodeBlock)).not.toThrow();
     store.close();
   });
 });

@@ -61,6 +61,13 @@ export const notebookSchemaV2 = notebookSchemaV1.extend({
           url: z.string().url(),
           note: z.string().default(""),
           tags: z.array(z.string()).default([])
+        }),
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
+          type: z.literal("code-block"),
+          code: z.string(),
+          tags: z.array(z.string()).default([])
         })
       ])
     )

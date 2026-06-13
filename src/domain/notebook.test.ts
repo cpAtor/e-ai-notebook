@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addCodeBlockCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
@@ -7,6 +8,7 @@ import {
   replacePageTextCanvasItems,
   removeSection,
   renameSection,
+  updateCodeBlockCanvasItem,
   updateTextCanvasItemTags
 } from "./notebook";
 
@@ -236,6 +238,43 @@ describe("Notebook Sections", () => {
     });
   });
 
+  it("adds and edits Code Blocks with optional Tags and app-owned Canvas Regions", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      notebookWithPage,
+      "page_dsa",
+      "canvas_item_two_sum_code",
+      "const seen = new Map();",
+      [" arrays ", "arrays", "pseudocode"]
+    );
+    const editedNotebook = updateCodeBlockCanvasItem(
+      notebookWithCodeBlock,
+      "canvas_item_two_sum_code",
+      "for (const n of nums) {\n  // track complements\n}",
+      ["hash map"]
+    );
+
+    expect(editedNotebook.canvasItems).toContainEqual({
+      id: "canvas_item_two_sum_code",
+      pageId: "page_dsa",
+      type: "code-block",
+      code: "for (const n of nums) {\n  // track complements\n}",
+      tags: ["hash map"]
+    });
+    expect(editedNotebook.canvasRegions).toContainEqual({
+      pageId: "page_dsa",
+      canvasItemId: "canvas_item_two_sum_code",
+      bounds: { x: 0, y: 140, width: 520, height: 220 }
+    });
+  });
+
   it("rejects blank Pages for unknown Sections", () => {
     expect(() =>
       addBlankPage(createStarterNotebook(), "section_missing", "page_missing")
@@ -259,5 +298,34 @@ describe("Notebook Sections", () => {
         []
       )
     ).toThrow("Cannot add a Link Card for an unknown Page.");
+  });
+
+  it("rejects Code Blocks for unknown Pages or blank content", () => {
+    expect(() =>
+      addCodeBlockCanvasItem(
+        createStarterNotebook(),
+        "page_missing",
+        "canvas_item_missing",
+        "return true;",
+        []
+      )
+    ).toThrow("Cannot add a Code Block for an unknown Page.");
+
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    expect(() =>
+      addCodeBlockCanvasItem(
+        addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+        "page_dsa",
+        "canvas_item_empty",
+        "   ",
+        []
+      )
+    ).toThrow("Code Block content cannot be empty.");
   });
 });

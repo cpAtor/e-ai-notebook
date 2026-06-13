@@ -27,7 +27,18 @@ export interface LinkCardCanvasItem {
   readonly tags: readonly string[];
 }
 
-export type CanvasItem = TextCanvasItem | LinkCardCanvasItem;
+export interface CodeBlockCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "code-block";
+  readonly code: string;
+  readonly tags: readonly string[];
+}
+
+export type CanvasItem =
+  | TextCanvasItem
+  | LinkCardCanvasItem
+  | CodeBlockCanvasItem;
 
 export interface CanvasRegion {
   readonly pageId: PageId;
@@ -300,6 +311,72 @@ export const updateLinkCardCanvasItemTags = (
   };
 };
 
+export const addCodeBlockCanvasItem = (
+  notebook: Notebook,
+  pageId: PageId,
+  canvasItemId: CanvasItemId,
+  code: string,
+  tags: readonly string[]
+): Notebook => {
+  const pageExists = notebook.pages.some((page) => page.id === pageId);
+  const normalizedCode = normalizeCodeBlockCode(code);
+
+  if (!pageExists) {
+    throw new Error("Cannot add a Code Block for an unknown Page.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: [
+      ...notebook.canvasItems,
+      {
+        id: canvasItemId,
+        pageId,
+        type: "code-block",
+        code: normalizedCode,
+        tags: normalizeTags(tags)
+      }
+    ],
+    canvasRegions: [
+      ...notebook.canvasRegions,
+      {
+        pageId,
+        canvasItemId,
+        bounds: { x: 0, y: 140, width: 520, height: 220 }
+      }
+    ]
+  };
+};
+
+export const updateCodeBlockCanvasItem = (
+  notebook: Notebook,
+  canvasItemId: CanvasItemId,
+  code: string,
+  nextTags: readonly string[]
+): Notebook => {
+  const normalizedCode = normalizeCodeBlockCode(code);
+  const codeBlockExists = notebook.canvasItems.some(
+    (canvasItem) => canvasItem.id === canvasItemId && canvasItem.type === "code-block"
+  );
+
+  if (!codeBlockExists) {
+    throw new Error("Cannot edit an unknown Code Block.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: notebook.canvasItems.map((canvasItem) =>
+      canvasItem.id === canvasItemId && canvasItem.type === "code-block"
+        ? {
+            ...canvasItem,
+            code: normalizedCode,
+            tags: normalizeTags(nextTags)
+          }
+        : canvasItem
+    )
+  };
+};
+
 export const createSectionId = (): SectionId => {
   if (globalThis.crypto?.randomUUID !== undefined) {
     return `section_${globalThis.crypto.randomUUID()}`;
@@ -353,4 +430,14 @@ const normalizeLinkCardUrl = (url: string): string => {
   }
 
   return parsedUrl.toString();
+};
+
+const normalizeCodeBlockCode = (code: string): string => {
+  const trimmedCode = code.trim();
+
+  if (trimmedCode.length === 0) {
+    throw new Error("Code Block content cannot be empty.");
+  }
+
+  return trimmedCode;
 };
