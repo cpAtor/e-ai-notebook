@@ -25,3 +25,48 @@ export function createInterviewPrepNotebook(): Notebook {
     })),
   }
 }
+
+export function renameSection(
+  notebook: Notebook,
+  sectionId: string,
+  nextName: string,
+): Notebook {
+  return {
+    ...notebook,
+    sections: notebook.sections.map((section) =>
+      section.id === sectionId ? { ...section, name: nextName } : section,
+    ),
+  }
+}
+
+export function addSection(notebook: Notebook, name: string): Notebook {
+  return {
+    ...notebook,
+    sections: [
+      ...notebook.sections,
+      {
+        id: `section_${nextSectionNumber(notebook.sections)}`,
+        name,
+        editable: true,
+      },
+    ],
+  }
+}
+
+export function removeSection(notebook: Notebook, sectionId: string): Notebook {
+  return {
+    ...notebook,
+    sections: notebook.sections.filter((section) => section.id !== sectionId),
+  }
+}
+
+function nextSectionNumber(sections: readonly Section[]): number {
+  return (
+    sections.reduce((highest, section) => {
+      const sectionNumber = Number(section.id.replace('section_', ''))
+      return Number.isFinite(sectionNumber)
+        ? Math.max(highest, sectionNumber)
+        : highest
+    }, 0) + 1
+  )
+}
