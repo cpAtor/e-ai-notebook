@@ -3,6 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
+  addBlankPage,
+  createStarterNotebook,
+  replacePageTextCanvasItems,
+  type Notebook
+} from "./domain/notebook";
+import {
   createNotebookStore,
   type NotebookStore
 } from "./persistence/notebookStorage";
@@ -26,9 +32,14 @@ describe("App", () => {
     vi.restoreAllMocks();
   });
 
-  const renderApp = () => {
+  const renderApp = async (seedNotebook?: Notebook) => {
     const store = createNotebookStore(databaseName);
     stores.push(store);
+
+    if (seedNotebook !== undefined) {
+      await store.saveNotebook(seedNotebook);
+    }
+
     const view = render(<App store={store} />);
 
     return {
@@ -38,7 +49,7 @@ describe("App", () => {
   };
 
   it("shows a private Interview Prep Notebook with seeded Sections", async () => {
-    renderApp();
+    await renderApp();
 
     expect(
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
@@ -51,7 +62,7 @@ describe("App", () => {
 
   it("renames, adds, and removes Sections", async () => {
     const user = userEvent.setup();
-    renderApp();
+    await renderApp();
 
     await screen.findByDisplayValue("DSA");
     await user.clear(screen.getByDisplayValue("DSA"));
@@ -71,19 +82,19 @@ describe("App", () => {
     expect(screen.queryByDisplayValue("Research")).not.toBeInTheDocument();
   });
 
-  it("makes no default runtime fetch calls", () => {
+  it("makes no default runtime fetch calls", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("Network is disabled by default."));
 
-    renderApp();
+    await renderApp();
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("creates a blank Page in a Section and opens a URL-addressable route", async () => {
     const user = userEvent.setup();
-    renderApp();
+    await renderApp();
 
     const dsaInput = await screen.findByDisplayValue("DSA");
     const dsaRow = dsaInput.closest("li");
@@ -108,7 +119,7 @@ describe("App", () => {
 
   it("reopens the same Page from its URL after reload", async () => {
     const user = userEvent.setup();
-    const firstRender = renderApp();
+    const firstRender = await renderApp();
 
     const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
 
@@ -125,7 +136,7 @@ describe("App", () => {
     firstRender.unmount();
     firstRender.store.close();
     window.history.replaceState({}, "", pagePath);
-    renderApp();
+    await renderApp();
 
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
@@ -140,7 +151,7 @@ describe("App", () => {
       "",
       "/sections/section_missing/pages/page_missing"
     );
-    const firstRender = renderApp();
+    const firstRender = await renderApp();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Section not found");
     firstRender.unmount();
@@ -151,8 +162,56 @@ describe("App", () => {
       "",
       "/sections/section_dsa/pages/page_missing"
     );
-    renderApp();
+    await renderApp();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Page not found");
+  });
+
+  it("searches text Rough Work and opens a highlighted Canvas Region", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithText = replacePageTextCanvasItems(
+      notebookWithPage,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_trace",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Binary search invariant"
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_trace",
+          bounds: { x: 120, y: 80, width: 260, height: 64 }
+        }
+      ]
+    );
+
+    await renderApp(notebookWithText);
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.type(screen.getByLabelText(/Search text Canvas Items/), "invariant");
+
+    const result = await screen.findByText(
+      "Interview Prep Notebook / DSA / Untitled Page"
+    );
+
+    expect(result).toBeInTheDocument();
+    expect(screen.getByText(/Binary search invariant/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(window.location.pathname).toBe("/sections/section_dsa/pages/page_dsa");
+    expect(
+      await screen.findByLabelText("Highlighted Canvas Region")
+    ).toBeInTheDocument();
   });
 });

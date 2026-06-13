@@ -17,8 +17,14 @@ import {
   type PageTextCanvasSnapshot
 } from "./canvas/tldrawTextAdapter";
 import {
+  buildLocalIndex,
+  searchLocalIndex,
+  type SearchResult
+} from "./domain/localIndex";
+import {
   addBlankPage,
   addSection,
+  type CanvasItemId,
   createPageId,
   createSectionId,
   getPage,
@@ -75,6 +81,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     Partial<Record<SectionId, string>>
   >({});
   const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [highlightedCanvasItemId, setHighlightedCanvasItemId] =
+    useState<CanvasItemId | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -119,6 +128,14 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     return resolveActivePage(notebook, route.sectionId, route.pageId);
   }, [notebook, route]);
+  const localIndex = useMemo(
+    () => (notebook === null ? [] : buildLocalIndex(notebook)),
+    [notebook]
+  );
+  const searchResults = useMemo(
+    () => searchLocalIndex(localIndex, searchQuery),
+    [localIndex, searchQuery]
+  );
 
   const saveNotebook = (nextNotebook: Notebook) => {
     setNotebook(nextNotebook);
@@ -173,12 +190,19 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handlePageOpen = (sectionId: SectionId, pageId: PageId) => {
+    setHighlightedCanvasItemId(null);
     openPage(sectionId, pageId);
   };
 
   const handleNotebookOpen = () => {
     window.history.pushState({}, "", "/");
+    setHighlightedCanvasItemId(null);
     setRoute({ kind: "notebook" });
+  };
+
+  const handleSearchResultOpen = (result: SearchResult) => {
+    setHighlightedCanvasItemId(result.canvasItemId);
+    openPage(result.sectionId, result.pageId);
   };
 
   const handlePageTextCanvasChange = (
@@ -310,6 +334,13 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         ) : null}
       </section>
 
+      <LocalSearch
+        query={searchQuery}
+        results={searchResults}
+        onQueryChange={setSearchQuery}
+        onResultOpen={handleSearchResultOpen}
+      />
+
       <section className="section-card" aria-labelledby="pages-title">
         <div className="section-card__header">
           <div>
@@ -330,6 +361,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           <ActivePageView
             activePage={activePage}
             notebook={notebook}
+            highlightedCanvasItemId={highlightedCanvasItemId}
             onNotebookOpen={handleNotebookOpen}
             onPageTextCanvasChange={handlePageTextCanvasChange}
           />
@@ -380,6 +412,7 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
 interface ActivePageViewProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onNotebookOpen: () => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
@@ -390,6 +423,7 @@ interface ActivePageViewProps {
 const ActivePageView = ({
   activePage,
   notebook,
+  highlightedCanvasItemId,
   onNotebookOpen,
   onPageTextCanvasChange
 }: ActivePageViewProps) => {
@@ -435,6 +469,7 @@ const ActivePageView = ({
       <PageTextCanvas
         page={activePage.page}
         notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
         onPageTextCanvasChange={onPageTextCanvasChange}
       />
       <button type="button" onClick={onNotebookOpen}>
@@ -447,6 +482,7 @@ const ActivePageView = ({
 interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTextCanvasSnapshot
@@ -456,6 +492,7 @@ interface PageTextCanvasProps {
 const PageTextCanvas = ({
   page,
   notebook,
+  highlightedCanvasItemId,
   onPageTextCanvasChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
@@ -466,6 +503,15 @@ const PageTextCanvas = ({
   const initialRegions = useMemo(
     () => notebook.canvasRegions.filter((region) => region.pageId === page.id),
     [notebook.canvasRegions, page.id]
+  );
+  const highlightedRegion = useMemo(
+    () =>
+      highlightedCanvasItemId === null
+        ? null
+        : (initialRegions.find(
+            (region) => region.canvasItemId === highlightedCanvasItemId
+          ) ?? null),
+    [highlightedCanvasItemId, initialRegions]
   );
 
   const handleMount = useCallback(
@@ -529,10 +575,77 @@ const PageTextCanvas = ({
       data-testid="tldraw-page-canvas"
       aria-label={`${page.title} tldraw text canvas`}
     >
+      {highlightedRegion !== null ? (
+        <div
+          className="canvas-region-highlight"
+          role="status"
+          aria-label="Highlighted Canvas Region"
+          style={{
+            height: `${highlightedRegion.bounds.height}px`,
+            left: `${highlightedRegion.bounds.x}px`,
+            top: `${highlightedRegion.bounds.y}px`,
+            width: `${highlightedRegion.bounds.width}px`
+          }}
+        />
+      ) : null}
       <Tldraw autoFocus initialState="text" onMount={handleMount} />
     </div>
   );
 };
+
+interface LocalSearchProps {
+  readonly query: string;
+  readonly results: readonly SearchResult[];
+  readonly onQueryChange: (query: string) => void;
+  readonly onResultOpen: (result: SearchResult) => void;
+}
+
+const LocalSearch = ({
+  query,
+  results,
+  onQueryChange,
+  onResultOpen
+}: LocalSearchProps) => (
+  <section className="section-card" aria-labelledby="local-search-title">
+    <div className="section-card__header">
+      <div>
+        <p className="eyebrow">Local Index</p>
+        <h2 id="local-search-title">Search Rough Work</h2>
+      </div>
+      <p className="section-count" aria-live="polite">
+        {results.length} {results.length === 1 ? "Search Result" : "Search Results"}
+      </p>
+    </div>
+    <label className="search-field" htmlFor="notebook-search">
+      Search text Canvas Items, Page titles, and Section paths
+      <input
+        id="notebook-search"
+        value={query}
+        placeholder="e.g. binary search invariant"
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+    </label>
+    {query.trim().length > 0 && results.length === 0 ? (
+      <p className="empty-state">No Search Results found in this Notebook.</p>
+    ) : null}
+    {results.length > 0 ? (
+      <ul className="search-results" aria-label="Search Results">
+        {results.map((result) => (
+          <li className="search-result" key={result.id}>
+            <div>
+              <strong>{result.notebookPath}</strong>
+              <span>{result.sourceLabel}</span>
+              <p>{result.snippet}</p>
+            </div>
+            <button type="button" onClick={() => onResultOpen(result)}>
+              Open Result
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null}
+  </section>
+);
 
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;

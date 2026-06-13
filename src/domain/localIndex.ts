@@ -1,0 +1,118 @@
+import {
+  getSection,
+  type CanvasItemId,
+  type CanvasRegion,
+  type Notebook,
+  type PageId,
+  type SectionId
+} from "./notebook";
+
+export interface LocalIndexEntry {
+  readonly id: string;
+  readonly notebookTitle: string;
+  readonly sectionId: SectionId;
+  readonly sectionTitle: string;
+  readonly pageId: PageId;
+  readonly pageTitle: string;
+  readonly canvasItemId: CanvasItemId | null;
+  readonly canvasRegion: CanvasRegion | null;
+  readonly searchableText: string;
+  readonly sourceLabel: string;
+}
+
+export interface SearchResult {
+  readonly id: string;
+  readonly sectionId: SectionId;
+  readonly pageId: PageId;
+  readonly canvasItemId: CanvasItemId | null;
+  readonly canvasRegion: CanvasRegion | null;
+  readonly notebookPath: string;
+  readonly sourceLabel: string;
+  readonly snippet: string;
+}
+
+export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] =>
+  notebook.pages.flatMap((page) => {
+    const section = getSection(notebook, page.sectionId);
+
+    if (section === undefined) {
+      return [];
+    }
+
+    const pagePathText = `${notebook.title} ${section.title} ${page.title}`;
+    const pageEntry: LocalIndexEntry = {
+      id: `page:${page.id}`,
+      notebookTitle: notebook.title,
+      sectionId: section.id,
+      sectionTitle: section.title,
+      pageId: page.id,
+      pageTitle: page.title,
+      canvasItemId: null,
+      canvasRegion: null,
+      searchableText: pagePathText,
+      sourceLabel: "Notebook path",
+    };
+
+    const textEntries = notebook.canvasItems
+      .filter((canvasItem) => canvasItem.pageId === page.id)
+      .map((canvasItem): LocalIndexEntry => ({
+        id: `text:${canvasItem.id}`,
+        notebookTitle: notebook.title,
+        sectionId: section.id,
+        sectionTitle: section.title,
+        pageId: page.id,
+        pageTitle: page.title,
+        canvasItemId: canvasItem.id,
+        canvasRegion:
+          notebook.canvasRegions.find(
+            (region) =>
+              region.pageId === page.id && region.canvasItemId === canvasItem.id
+          ) ?? null,
+        searchableText: `${pagePathText} ${canvasItem.text}`,
+        sourceLabel: "Text Canvas Item",
+      }));
+
+    return [pageEntry, ...textEntries];
+  });
+
+export const searchLocalIndex = (
+  entries: readonly LocalIndexEntry[],
+  rawQuery: string
+): readonly SearchResult[] => {
+  const query = normalizeSearchText(rawQuery);
+
+  if (query.length === 0) {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => normalizeSearchText(entry.searchableText).includes(query))
+    .map((entry) => ({
+      id: entry.id,
+      sectionId: entry.sectionId,
+      pageId: entry.pageId,
+      canvasItemId: entry.canvasItemId,
+      canvasRegion: entry.canvasRegion,
+      notebookPath: `${entry.notebookTitle} / ${entry.sectionTitle} / ${entry.pageTitle}`,
+      sourceLabel: entry.sourceLabel,
+      snippet: snippetForQuery(entry.searchableText, query),
+    }));
+};
+
+const normalizeSearchText = (text: string): string => text.trim().toLowerCase();
+
+const snippetForQuery = (text: string, normalizedQuery: string): string => {
+  const normalizedText = text.toLowerCase();
+  const matchIndex = normalizedText.indexOf(normalizedQuery);
+
+  if (matchIndex < 0) {
+    return text.slice(0, 96);
+  }
+
+  const start = Math.max(0, matchIndex - 36);
+  const end = Math.min(text.length, matchIndex + normalizedQuery.length + 60);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < text.length ? "..." : "";
+
+  return `${prefix}${text.slice(start, end)}${suffix}`;
+};
