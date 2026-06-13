@@ -151,6 +151,18 @@ textarea:focus {
   line-height: 1.5;
 }
 
+.page-title-affordance {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.2;
+  padding: 0.55rem 0.8rem;
+}
+
 .drawing-screen-search {
   display: grid;
   grid-template-columns: minmax(12rem, 18rem) minmax(18rem, 1fr);
@@ -632,6 +644,100 @@ textarea:focus {
   background: var(--panel-bg);
   box-shadow: 0 24px 70px rgba(23, 32, 51, 0.22);
   padding: 1rem;
+}
+
+.notebook-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 48;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  width: min(24rem, calc(100% - 1rem));
+  height: 100vh;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-bg) 96%, transparent);
+  box-shadow: 18px 0 70px rgba(23, 32, 51, 0.22);
+  padding: 1rem;
+}
+
+.notebook-drawer__header,
+.notebook-drawer__section-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.notebook-drawer__header h3,
+.notebook-drawer__empty {
+  margin: 0;
+}
+
+.notebook-drawer__tree,
+.notebook-drawer__pages {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.notebook-drawer__section {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 0.4rem solid var(--section-color);
+  border-radius: 1rem;
+  background: var(--card-bg);
+  padding: 0.85rem;
+}
+
+.notebook-drawer__section-title,
+.notebook-drawer__page {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.notebook-drawer__section-title {
+  color: var(--section-color);
+  font-weight: 900;
+}
+
+.notebook-drawer__context {
+  display: grid;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.notebook-drawer__context summary {
+  cursor: pointer;
+}
+
+.notebook-drawer__pages {
+  gap: 0.5rem;
+}
+
+.notebook-drawer__page {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 0.8rem;
+  background: #f5f1e8;
+  color: #172033;
+  padding: 0.7rem 0.8rem;
+}
+
+.notebook-drawer__page[aria-current="page"] {
+  outline: 3px solid color-mix(in srgb, var(--section-color) 28%, transparent);
+}
+
+.notebook-drawer__empty {
+  color: var(--muted);
 }
 
 .canvas-modal-backdrop {

@@ -2,6 +2,7 @@ import {
   ChangeEvent,
   ClipboardEvent,
   ComponentProps,
+  CSSProperties,
   DragEvent,
   FormEvent,
   ReactNode,
@@ -1705,6 +1706,7 @@ const ActivePageView = ({
   const [inspectedCanvasItemId, setInspectedCanvasItemId] =
     useState<CanvasItemId | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isNotebookDrawerOpen, setIsNotebookDrawerOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
 
@@ -1754,8 +1756,19 @@ const ActivePageView = ({
     <article className="page-canvas" aria-labelledby="active-page-title">
       <header className="drawing-screen__header">
         <div>
-          <p className="eyebrow">{activePage.section.title}</p>
-          <h2 id="active-page-title">{activePage.page.title}</h2>
+          <p className="eyebrow">Current Page</p>
+          <h2
+            id="active-page-title"
+            className="page-title-affordance"
+            aria-label={activePage.page.title}
+          >
+            <span aria-hidden="true">📄</span>
+            <span className="page-title-affordance__section">
+              {activePage.section.title}
+            </span>
+            <span aria-hidden="true">/</span>
+            <span>{activePage.page.title}</span>
+          </h2>
           <p>
             Use tldraw text and draw tools for rough interview-prep work. Text
             Canvas Items are searchable; Freehand Drawings autosave and reload for
@@ -1764,6 +1777,14 @@ const ActivePageView = ({
           <p>Page Type: unset</p>
         </div>
         <div className="canvas-actions">
+          <button
+            type="button"
+            aria-expanded={isNotebookDrawerOpen}
+            aria-controls="notebook-drawer"
+            onClick={() => setIsNotebookDrawerOpen(true)}
+          >
+            Open Notebook Drawer
+          </button>
           <button
             type="button"
             aria-expanded={isMenuOpen}
@@ -1787,6 +1808,21 @@ const ActivePageView = ({
           </button>
         </div>
       </header>
+      {isNotebookDrawerOpen ? (
+        <NotebookDrawer
+          notebook={notebook}
+          currentPageId={activePage.page.id}
+          onClose={() => setIsNotebookDrawerOpen(false)}
+          onPageCreate={(sectionId) => {
+            onPageCreate(sectionId);
+            setIsNotebookDrawerOpen(false);
+          }}
+          onPageOpen={(sectionId, pageId) => {
+            onPageOpen(sectionId, pageId);
+            setIsNotebookDrawerOpen(false);
+          }}
+        />
+      ) : null}
       {isMenuOpen ? (
         <CanvasHamburgerMenu
           activeTheme={themePreference}
@@ -1923,6 +1959,100 @@ const ActivePageView = ({
     </article>
   );
 };
+
+interface NotebookDrawerProps {
+  readonly notebook: Notebook;
+  readonly currentPageId: PageId;
+  readonly onClose: () => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+}
+
+const NotebookDrawer = ({
+  notebook,
+  currentPageId,
+  onClose,
+  onPageCreate,
+  onPageOpen
+}: NotebookDrawerProps) => (
+  <aside
+    id="notebook-drawer"
+    className="notebook-drawer"
+    role="complementary"
+    aria-label="Notebook Drawer"
+  >
+    <div className="notebook-drawer__header">
+      <div>
+        <p className="eyebrow">Notebook Drawer</p>
+        <h3>Sections and Pages</h3>
+      </div>
+      <button type="button" className="remove-button" onClick={onClose}>
+        Close Drawer
+      </button>
+    </div>
+    <ul className="notebook-drawer__tree" aria-label="Sections and Pages">
+      {notebook.sections.map((section, sectionIndex) => {
+        const pages = notebook.pages.filter((page) => page.sectionId === section.id);
+
+        return (
+          <li
+            className="notebook-drawer__section"
+            key={section.id}
+            style={
+              {
+                "--section-color": drawerSectionColor(sectionIndex)
+              } as CSSProperties
+            }
+          >
+            <div className="notebook-drawer__section-header">
+              <span className="notebook-drawer__section-title">
+                <span aria-hidden="true">●</span>
+                {section.title}
+              </span>
+              <button
+                type="button"
+                onClick={() => onPageCreate(section.id)}
+                aria-label={`Create Page in ${section.title}`}
+              >
+                + Page
+              </button>
+            </div>
+            <details className="notebook-drawer__context">
+              <summary aria-label={`${section.title} context menu`}>
+                Section context
+              </summary>
+              <button
+                type="button"
+                onClick={() => onPageCreate(section.id)}
+              >
+                Create Page from {section.title} context
+              </button>
+            </details>
+            {pages.length > 0 ? (
+              <ul className="notebook-drawer__pages" aria-label={`${section.title} Pages`}>
+                {pages.map((page) => (
+                  <li key={page.id}>
+                    <button
+                      type="button"
+                      className="notebook-drawer__page"
+                      aria-current={page.id === currentPageId ? "page" : undefined}
+                      onClick={() => onPageOpen(section.id, page.id)}
+                    >
+                      <span aria-hidden="true">◇</span>
+                      {page.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="notebook-drawer__empty">No Pages in this Section.</p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  </aside>
+);
 
 interface CanvasHamburgerMenuProps {
   readonly activeTheme: ThemePreference;
@@ -3301,6 +3431,12 @@ const themePreferenceLabel = (preference: ThemePreference): string => {
 
 const idFromLabel = (label: string): string =>
   label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+const drawerSectionColor = (index: number): string => {
+  const colors = ["#5468ff", "#f59f00", "#2f9e44", "#9c36b5", "#0b7285"];
+
+  return colors[index % colors.length] ?? "#5468ff";
+};
 
 const prepareNotebookForDrawingScreen = (
   notebook: Notebook

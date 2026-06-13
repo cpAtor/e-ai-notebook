@@ -141,6 +141,69 @@ describe("App", () => {
     );
   });
 
+  it("opens a hidden Notebook Drawer with Section/Page tree creation", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithDsaPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+
+    await renderApp(notebookWithDsaPage);
+    expect(
+      await screen.findByRole("heading", { name: "Untitled Page" })
+    ).toHaveClass("page-title-affordance");
+    expect(screen.getByText("DSA")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("complementary", { name: "Notebook Drawer" })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
+    const drawer = await screen.findByRole("complementary", {
+      name: "Notebook Drawer"
+    });
+    expect(within(drawer).getByText("Inbox")).toBeInTheDocument();
+    expect(within(drawer).getByText("DSA")).toBeInTheDocument();
+    expect(within(drawer).getByText("System Design")).toBeInTheDocument();
+    expect(within(drawer).getByText("Research")).toBeInTheDocument();
+    expect(
+      within(drawer).getByRole("button", { name: "Untitled Page" })
+    ).toHaveAttribute("aria-current", "page");
+
+    await user.click(within(drawer).getByRole("button", { name: "Create Page in DSA" }));
+    expect(window.location.pathname).toMatch(/^\/sections\/section_dsa\/pages\/page_/);
+    expect(
+      screen.queryByRole("complementary", { name: "Notebook Drawer" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Empty Canvas Prompts")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
+    const reopenedDrawer = await screen.findByRole("complementary", {
+      name: "Notebook Drawer"
+    });
+    await user.click(within(reopenedDrawer).getByLabelText("Research context menu"));
+    await user.click(
+      within(reopenedDrawer).getByRole("button", {
+        name: "Create Page from Research context"
+      })
+    );
+    expect(window.location.pathname).toMatch(
+      /^\/sections\/section_research\/pages\/page_/
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
+    const finalDrawer = await screen.findByRole("complementary", {
+      name: "Notebook Drawer"
+    });
+    await user.click(within(finalDrawer).getByRole("button", { name: "Close Drawer" }));
+    expect(
+      screen.queryByRole("complementary", { name: "Notebook Drawer" })
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps secondary actions in the Notebook Menu and Command Palette Canvas Modals", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
