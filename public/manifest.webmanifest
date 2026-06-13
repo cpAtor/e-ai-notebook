@@ -1,0 +1,18 @@
+{
+  "name": "Interview Prep Notebook",
+  "short_name": "Prep Notebook",
+  "description": "Private Interview Prep Notebook for capturing and revisiting rough work.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#243b53",
+  "icons": [
+    {
+      "src": "/icons/notebook-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

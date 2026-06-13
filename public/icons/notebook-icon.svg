@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>Interview Prep Notebook</title>
+  <rect width="512" height="512" rx="108" fill="#243b53" />
+  <rect x="132" y="84" width="260" height="344" rx="32" fill="#f8fafc" />
+  <path d="M176 150h172M176 214h132M176 278h172M176 342h96" stroke="#243b53" stroke-width="28" stroke-linecap="round" />
+  <path d="M132 116h-28c-18 0-32 14-32 32v232c0 18 14 32 32 32h28" fill="none" stroke="#9fb3c8" stroke-width="28" stroke-linecap="round" />
+</svg>
