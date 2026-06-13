@@ -12,19 +12,25 @@ if ($Iterations -lt 1) {
 for ($i = 1; $i -le $Iterations; $i++) {
     Write-Host "------- RALPH ITERATION $i --------"
 
+    $outputFile = New-TemporaryFile
     $previousErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File ".\plans\once-copilot.ps1" -PromptPath $PromptPath 2>&1
-    $exitCode = $LASTEXITCODE
-    $ErrorActionPreference = $previousErrorActionPreference
+    $exitCode = 0
 
-    $output | ForEach-Object { Write-Host $_ }
+    try {
+        $ErrorActionPreference = "Continue"
+        & powershell -NoProfile -ExecutionPolicy Bypass -File ".\plans\once-copilot.ps1" -PromptPath $PromptPath 2>&1 |
+            Tee-Object -FilePath $outputFile.FullName
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $text = Get-Content $outputFile.FullName -Raw
+    Remove-Item $outputFile.FullName -Force
 
     if ($exitCode -ne 0) {
         exit $exitCode
     }
-
-    $text = $output -join "`n"
 
     if ($text -match "<promise>NO_MORE_TASKS</promise>") {
         Write-Host "Ralph found no more AFK tasks after $i iteration(s)."
