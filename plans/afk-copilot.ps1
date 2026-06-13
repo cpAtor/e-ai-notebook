@@ -12,11 +12,16 @@ if ($Iterations -lt 1) {
 for ($i = 1; $i -le $Iterations; $i++) {
     Write-Host "------- RALPH ITERATION $i --------"
 
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $output = & powershell -NoProfile -ExecutionPolicy Bypass -File ".\plans\once-copilot.ps1" -PromptPath $PromptPath 2>&1
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+
     $output | ForEach-Object { Write-Host $_ }
 
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        exit $exitCode
     }
 
     $text = $output -join "`n"
