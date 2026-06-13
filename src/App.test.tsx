@@ -107,6 +107,8 @@ describe("App", () => {
       /Stored in local browser storage by default\.\s*Your Notebook stays in this browser unless you export it or configure a connected feature\. Browser storage is not server-grade encrypted storage, so use Notebook Export for backups rather than expecting cloud sync\./
     );
     expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Search Rough Work" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Search Canvas Items/)).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("DSA")).toBeInTheDocument();
     expect(screen.getByDisplayValue("System Design")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Research")).toBeInTheDocument();
@@ -272,6 +274,84 @@ describe("App", () => {
 
     await searchNotebook(user, "no matching notes");
     expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
+  });
+
+  it("opens Search as a floating overlay and groups results by Page", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+    const research = starterNotebook.sections.find(
+      (section) => section.title === "Research"
+    );
+
+    if (dsa === undefined || research === undefined) {
+      throw new Error("Expected seeded Sections.");
+    }
+
+    const notebookWithPages = addBlankPage(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      research.id,
+      "page_research"
+    );
+    const notebookWithDsaText = replacePageTextCanvasItems(
+      notebookWithPages,
+      "page_dsa",
+      [
+        {
+          id: "canvas_item_dsa",
+          pageId: "page_dsa",
+          type: "text",
+          text: "Shared retrieval invariant",
+          tags: ["shared"]
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_dsa",
+          bounds: { x: 32, y: 40, width: 240, height: 64 }
+        }
+      ]
+    );
+    const notebookWithResearchLink = addLinkCardCanvasItem(
+      notebookWithDsaText,
+      "page_research",
+      "canvas_item_research",
+      "https://example.com/search",
+      "Shared retrieval reading",
+      ["shared"]
+    );
+
+    await renderApp(notebookWithResearchLink);
+    await screen.findByRole("heading", { name: "Untitled Page" });
+    await user.click(screen.getByRole("button", { name: "Open Search Overlay" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Search Notebook" })
+    ).toHaveClass("canvas-modal");
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "shared");
+
+    const dsaGroupHeading = await screen.findByText(
+      "Interview Prep Notebook / DSA / Untitled Page"
+    );
+    const researchGroupHeading = await screen.findByText(
+      "Interview Prep Notebook / Research / Untitled Page"
+    );
+    expect(dsaGroupHeading).toBeInTheDocument();
+    expect(researchGroupHeading).toBeInTheDocument();
+    expect(screen.getAllByText("Text Canvas Item").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Link Card").length).toBeGreaterThan(0);
+
+    const researchGroup = researchGroupHeading.closest("section");
+
+    if (researchGroup === null) {
+      throw new Error("Expected grouped Research Search Results.");
+    }
+
+    await user.click(within(researchGroup).getByRole("button", { name: "Open Result" }));
+    expect(window.location.pathname).toBe("/sections/section_research/pages/page_research");
+    expect(
+      await screen.findByLabelText("Highlighted Link Card Canvas Region")
+    ).toBeInTheDocument();
   });
 
   it("hides Empty Canvas Prompts once the Default Page has a Canvas Item", async () => {

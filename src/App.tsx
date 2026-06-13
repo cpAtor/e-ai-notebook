@@ -1229,13 +1229,6 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         ) : null}
       </section>
 
-      <LocalSearch
-        query={searchQuery}
-        results={searchResults}
-        onQueryChange={setSearchQuery}
-        onResultOpen={handleSearchResultOpen}
-      />
-
       <section className="section-card" aria-labelledby="pages-title">
         <div className="section-card__header">
           <div>
@@ -1781,6 +1774,13 @@ const ActivePageView = ({
           </button>
           <button
             type="button"
+            className="search-control-button"
+            onClick={() => setActiveModal("search")}
+          >
+            Open Search Overlay
+          </button>
+          <button
+            type="button"
             onClick={() => setIsCommandPaletteOpen(true)}
           >
             Command Palette
@@ -2193,47 +2193,73 @@ const DrawingScreenSearch = ({
   results,
   onQueryChange,
   onResultOpen
-}: DrawingScreenSearchProps) => (
-  <section className="drawing-screen-search" aria-labelledby="drawing-search-title">
-    <div>
-      <p className="eyebrow">Local Index</p>
-      <h3 id="drawing-search-title">Ask/Search Notebook</h3>
-    </div>
-    <label className="search-field" htmlFor="notebook-search">
-      Search Canvas Items, Tags, Page titles, and Section paths
-      <input
-        id="notebook-search"
-        value={query}
-        placeholder="e.g. binary search invariant"
-        onChange={(event) => onQueryChange(event.target.value)}
-      />
-    </label>
-    {query.trim().length > 0 && results.length === 0 ? (
-      <p className="empty-state">No Search Results found in this Notebook.</p>
-    ) : null}
-    {results.length > 0 ? (
-      <ul className="search-results" aria-label="Search Results">
-        {results.map((result) => (
-          <li className="search-result" key={result.id}>
-            <div>
-              <strong>{result.notebookPath}</strong>
-              <span>{result.sourceLabel}</span>
-              {result.matchedTags.length > 0 ? (
+}: DrawingScreenSearchProps) => {
+  const groupedResults = groupSearchResultsByPage(results);
+
+  return (
+    <section className="drawing-screen-search" aria-labelledby="drawing-search-title">
+      <div>
+        <p className="eyebrow">Local Index</p>
+        <h3 id="drawing-search-title">Ask/Search Notebook</h3>
+        <p>
+          Searches text, Code Blocks, Link Card URLs and notes, captions, Tags,
+          Page titles, and generated summaries when present. Freehand Drawing is
+          not searched in this MVP.
+        </p>
+      </div>
+      <label className="search-field" htmlFor="notebook-search">
+        Search Canvas Items, Tags, Page titles, and Section paths
+        <input
+          id="notebook-search"
+          value={query}
+          placeholder="e.g. binary search invariant"
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+      </label>
+      {query.trim().length > 0 && results.length === 0 ? (
+        <p className="empty-state">No Search Results found in this Notebook.</p>
+      ) : null}
+      {groupedResults.length > 0 ? (
+        <div className="search-result-groups" aria-label="Search Results by Page">
+          {groupedResults.map((group) => (
+            <section
+              className="search-result-group"
+              key={group.pageId}
+              aria-labelledby={`search-results-${group.pageId}`}
+            >
+              <div className="search-result-group__header">
+                <h4 id={`search-results-${group.pageId}`}>{group.notebookPath}</h4>
                 <span>
-                  Matched Tags: {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                  {group.results.length}{" "}
+                  {group.results.length === 1 ? "result" : "results"}
                 </span>
-              ) : null}
-              <p>{result.snippet}</p>
-            </div>
-            <button type="button" onClick={() => onResultOpen(result)}>
-              Open Result
-            </button>
-          </li>
-        ))}
-      </ul>
-    ) : null}
-  </section>
-);
+              </div>
+              <ul className="search-results" aria-label={`${group.notebookPath} Search Results`}>
+                {group.results.map((result) => (
+                  <li className="search-result" key={result.id}>
+                    <div>
+                      <span>{result.sourceLabel}</span>
+                      {result.matchedTags.length > 0 ? (
+                        <span>
+                          Matched Tags:{" "}
+                          {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                        </span>
+                      ) : null}
+                      <p>{result.snippet}</p>
+                    </div>
+                    <button type="button" onClick={() => onResultOpen(result)}>
+                      Open Result
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+};
 
 interface PageTextCanvasProps {
   readonly page: Page;
@@ -3171,64 +3197,37 @@ const summaryForCanvasItem = (canvasItem: InspectableCanvasItem): string => {
   return canvasItem.text;
 };
 
-interface LocalSearchProps {
-  readonly query: string;
+interface SearchResultGroup {
+  readonly pageId: PageId;
+  readonly notebookPath: string;
   readonly results: readonly SearchResult[];
-  readonly onQueryChange: (query: string) => void;
-  readonly onResultOpen: (result: SearchResult) => void;
 }
 
-const LocalSearch = ({
-  query,
-  results,
-  onQueryChange,
-  onResultOpen
-}: LocalSearchProps) => (
-  <section className="section-card" aria-labelledby="local-search-title">
-    <div className="section-card__header">
-      <div>
-        <p className="eyebrow">Local Index</p>
-        <h2 id="local-search-title">Search Rough Work</h2>
-      </div>
-      <p className="section-count" aria-live="polite">
-        {results.length} {results.length === 1 ? "Search Result" : "Search Results"}
-      </p>
-    </div>
-    <label className="search-field" htmlFor="notebook-search">
-      Search Canvas Items, Tags, Page titles, and Section paths
-      <input
-        id="notebook-search"
-        value={query}
-        placeholder="e.g. binary search invariant"
-        onChange={(event) => onQueryChange(event.target.value)}
-      />
-    </label>
-    {query.trim().length > 0 && results.length === 0 ? (
-      <p className="empty-state">No Search Results found in this Notebook.</p>
-    ) : null}
-    {results.length > 0 ? (
-      <ul className="search-results" aria-label="Search Results">
-        {results.map((result) => (
-          <li className="search-result" key={result.id}>
-            <div>
-              <strong>{result.notebookPath}</strong>
-              <span>{result.sourceLabel}</span>
-              {result.matchedTags.length > 0 ? (
-                <span>
-                  Matched Tags: {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
-                </span>
-              ) : null}
-              <p>{result.snippet}</p>
-            </div>
-            <button type="button" onClick={() => onResultOpen(result)}>
-              Open Result
-            </button>
-          </li>
-        ))}
-      </ul>
-    ) : null}
-  </section>
-);
+const groupSearchResultsByPage = (
+  results: readonly SearchResult[]
+): readonly SearchResultGroup[] => {
+  const groups = new Map<PageId, SearchResultGroup>();
+
+  for (const result of results) {
+    const existingGroup = groups.get(result.pageId);
+
+    if (existingGroup === undefined) {
+      groups.set(result.pageId, {
+        pageId: result.pageId,
+        notebookPath: result.notebookPath,
+        results: [result]
+      });
+      continue;
+    }
+
+    groups.set(result.pageId, {
+      ...existingGroup,
+      results: [...existingGroup.results, result]
+    });
+  }
+
+  return Array.from(groups.values());
+};
 
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;
