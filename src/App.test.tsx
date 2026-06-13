@@ -100,6 +100,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
     expect(screen.getByText("Page Type: unset")).toBeInTheDocument();
+    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
     expect(window.location.pathname).toMatch(
       /^\/sections\/section_dsa\/pages\/page_/
     );
@@ -130,6 +131,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
     expect(screen.getByText("DSA")).toBeInTheDocument();
+    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
   });
 
   it("shows invalid Section and Page URL states without resetting the Notebook", async () => {

@@ -1,6 +1,27 @@
 export type NotebookId = "notebook_private_interview_prep";
 export type SectionId = `section_${string}`;
 export type PageId = `page_${string}`;
+export type CanvasItemId = `canvas_item_${string}`;
+
+export interface CanvasBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface TextCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "text";
+  readonly text: string;
+}
+
+export interface CanvasRegion {
+  readonly pageId: PageId;
+  readonly canvasItemId: CanvasItemId;
+  readonly bounds: CanvasBounds;
+}
 
 export interface Page {
   readonly id: PageId;
@@ -20,6 +41,8 @@ export interface Notebook {
   readonly privacyMode: "private-by-default";
   readonly sections: readonly Section[];
   readonly pages: readonly Page[];
+  readonly canvasItems: readonly TextCanvasItem[];
+  readonly canvasRegions: readonly CanvasRegion[];
 }
 
 export const STARTER_SECTION_TITLES = [
@@ -36,7 +59,9 @@ export const createStarterNotebook = (): Notebook => ({
     id: sectionIdFromTitle(title),
     title
   })),
-  pages: []
+  pages: [],
+  canvasItems: [],
+  canvasRegions: []
 });
 
 export const renameSection = (
@@ -72,11 +97,25 @@ export const addSection = (
 export const removeSection = (
   notebook: Notebook,
   sectionId: SectionId
-): Notebook => ({
-  ...notebook,
-  sections: notebook.sections.filter((section) => section.id !== sectionId),
-  pages: notebook.pages.filter((page) => page.sectionId !== sectionId)
-});
+): Notebook => {
+  const removedPageIds = new Set(
+    notebook.pages
+      .filter((page) => page.sectionId === sectionId)
+      .map((page) => page.id)
+  );
+
+  return {
+    ...notebook,
+    sections: notebook.sections.filter((section) => section.id !== sectionId),
+    pages: notebook.pages.filter((page) => page.sectionId !== sectionId),
+    canvasItems: notebook.canvasItems.filter(
+      (canvasItem) => !removedPageIds.has(canvasItem.pageId)
+    ),
+    canvasRegions: notebook.canvasRegions.filter(
+      (region) => !removedPageIds.has(region.pageId)
+    )
+  };
+};
 
 export const addBlankPage = (
   notebook: Notebook,
@@ -113,6 +152,31 @@ export const getPage = (
   notebook: Notebook,
   pageId: PageId
 ): Page | undefined => notebook.pages.find((page) => page.id === pageId);
+
+export const replacePageTextCanvasItems = (
+  notebook: Notebook,
+  pageId: PageId,
+  nextTextItems: readonly TextCanvasItem[],
+  nextRegions: readonly CanvasRegion[]
+): Notebook => {
+  const pageExists = notebook.pages.some((page) => page.id === pageId);
+
+  if (!pageExists) {
+    throw new Error("Cannot save Canvas Items for an unknown Page.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: [
+      ...notebook.canvasItems.filter((canvasItem) => canvasItem.pageId !== pageId),
+      ...nextTextItems
+    ],
+    canvasRegions: [
+      ...notebook.canvasRegions.filter((region) => region.pageId !== pageId),
+      ...nextRegions
+    ]
+  };
+};
 
 export const createSectionId = (): SectionId => {
   if (globalThis.crypto?.randomUUID !== undefined) {

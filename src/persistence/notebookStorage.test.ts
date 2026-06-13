@@ -3,7 +3,8 @@ import { addBlankPage, createStarterNotebook } from "../domain/notebook";
 import {
   createNotebookStore,
   deleteNotebookDatabase,
-  notebookSchemaV1
+  notebookSchemaV1,
+  notebookSchemaV2
 } from "./notebookStorage";
 
 const databaseName = "notebook-storage-test";
@@ -33,9 +34,18 @@ describe("Notebook storage", () => {
   });
 
   it("keeps the first persisted schema strict and versionable", () => {
-    expect(() => notebookSchemaV1.parse(createStarterNotebook())).not.toThrow();
     expect(() =>
       notebookSchemaV1.parse({
+        id: "notebook_private_interview_prep",
+        title: "Interview Prep Notebook",
+        privacyMode: "private-by-default",
+        sections: createStarterNotebook().sections,
+        pages: []
+      })
+    ).not.toThrow();
+    expect(() => notebookSchemaV2.parse(createStarterNotebook())).not.toThrow();
+    expect(() =>
+      notebookSchemaV2.parse({
         ...createStarterNotebook(),
         pages: [
           {
@@ -47,5 +57,17 @@ describe("Notebook storage", () => {
         ]
       })
     ).toThrow();
+  });
+
+  it("migrates v1 Notebook records to v2 canvas source arrays on save", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+
+    expect(notebook.canvasItems).toEqual([]);
+    expect(notebook.canvasRegions).toEqual([]);
+
+    await store.saveNotebook(notebook);
+    await expect(store.loadNotebook()).resolves.toEqual(notebook);
+    store.close();
   });
 });

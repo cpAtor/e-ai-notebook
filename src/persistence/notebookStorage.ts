@@ -2,13 +2,14 @@ import Dexie, { type Table } from "dexie";
 import { z } from "zod";
 import {
   createStarterNotebook,
+  type CanvasItemId,
   type Notebook,
   type NotebookId,
   type PageId,
   type SectionId
 } from "../domain/notebook";
 
-export const NOTEBOOK_SCHEMA_VERSION = 1;
+export const NOTEBOOK_SCHEMA_VERSION = 2;
 export const DEFAULT_NOTEBOOK_DATABASE_NAME = "interview_prep_notebook";
 const NOTEBOOK_RECORD_ID: NotebookId = "notebook_private_interview_prep";
 
@@ -17,6 +18,9 @@ const sectionIdSchema = z.custom<SectionId>(
 );
 const pageIdSchema = z.custom<PageId>(
   (value) => typeof value === "string" && value.startsWith("page_")
+);
+const canvasItemIdSchema = z.custom<CanvasItemId>(
+  (value) => typeof value === "string" && value.startsWith("canvas_item_")
 );
 
 export const notebookSchemaV1 = z.object({
@@ -37,18 +41,51 @@ export const notebookSchemaV1 = z.object({
       pageType: z.null()
     })
   )
+});
+
+export const notebookSchemaV2 = notebookSchemaV1.extend({
+  canvasItems: z
+    .array(
+      z.object({
+        id: canvasItemIdSchema,
+        pageId: pageIdSchema,
+        type: z.literal("text"),
+        text: z.string()
+      })
+    )
+    .default([]),
+  canvasRegions: z
+    .array(
+      z.object({
+        pageId: pageIdSchema,
+        canvasItemId: canvasItemIdSchema,
+        bounds: z.object({
+          x: z.number(),
+          y: z.number(),
+          width: z.number().nonnegative(),
+          height: z.number().nonnegative()
+        })
+      })
+    )
+    .default([])
 }) satisfies z.ZodType<Notebook>;
 
 const notebookRecordSchemaV1 = z.object({
   id: z.literal(NOTEBOOK_RECORD_ID),
-  schemaVersion: z.literal(NOTEBOOK_SCHEMA_VERSION),
+  schemaVersion: z.literal(1),
   notebook: notebookSchemaV1
 });
 
-type NotebookRecordV1 = z.infer<typeof notebookRecordSchemaV1>;
+const notebookRecordSchemaV2 = z.object({
+  id: z.literal(NOTEBOOK_RECORD_ID),
+  schemaVersion: z.literal(NOTEBOOK_SCHEMA_VERSION),
+  notebook: notebookSchemaV2
+});
+
+type NotebookRecordV2 = z.infer<typeof notebookRecordSchemaV2>;
 
 class NotebookDatabase extends Dexie {
-  notebooks!: Table<NotebookRecordV1, NotebookId>;
+  notebooks!: Table<NotebookRecordV2, NotebookId>;
 
   constructor(databaseName: string) {
     super(databaseName);
@@ -79,7 +116,7 @@ export const createNotebookStore = (
         return notebook;
       }
 
-      return notebookRecordSchemaV1.parse(record).notebook;
+      return parseNotebookRecord(record).notebook;
     },
     saveNotebook: async (notebook) => {
       await database.notebooks.put(toNotebookRecord(notebook));
@@ -96,8 +133,27 @@ export const deleteNotebookDatabase = async (
   await Dexie.delete(databaseName);
 };
 
-const toNotebookRecord = (notebook: Notebook): NotebookRecordV1 =>
-  notebookRecordSchemaV1.parse({
+const parseNotebookRecord = (record: unknown): NotebookRecordV2 => {
+  const versionedRecord = z
+    .object({ schemaVersion: z.union([z.literal(1), z.literal(2)]) })
+    .passthrough()
+    .parse(record);
+
+  if (versionedRecord.schemaVersion === 1) {
+    const v1Record = notebookRecordSchemaV1.parse(record);
+
+    return toNotebookRecord({
+      ...v1Record.notebook,
+      canvasItems: [],
+      canvasRegions: []
+    });
+  }
+
+  return notebookRecordSchemaV2.parse(record);
+};
+
+const toNotebookRecord = (notebook: Notebook): NotebookRecordV2 =>
+  notebookRecordSchemaV2.parse({
     id: NOTEBOOK_RECORD_ID,
     schemaVersion: NOTEBOOK_SCHEMA_VERSION,
     notebook

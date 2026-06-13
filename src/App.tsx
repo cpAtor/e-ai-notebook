@@ -1,4 +1,21 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ComponentProps,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
+import { Tldraw } from "tldraw";
+import "tldraw/tldraw.css";
+import {
+  canvasItemIdForShape,
+  shapeNeedsCanvasItemMeta,
+  textCanvasSnapshotFromTldrawShapes,
+  toTldrawTextShapeDrafts,
+  type PageTextCanvasSnapshot
+} from "./canvas/tldrawTextAdapter";
 import {
   addBlankPage,
   addSection,
@@ -9,6 +26,7 @@ import {
   Notebook,
   Page,
   PageId,
+  replacePageTextCanvasItems,
   renameSection,
   removeSection,
   Section,
@@ -42,6 +60,10 @@ type ActivePage =
     }
   | { readonly kind: "invalid-section"; readonly sectionId: SectionId }
   | { readonly kind: "invalid-page"; readonly section: Section; readonly pageId: PageId };
+
+type TldrawEditor = Parameters<
+  NonNullable<ComponentProps<typeof Tldraw>["onMount"]>
+>[0];
 
 export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
@@ -157,6 +179,20 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const handleNotebookOpen = () => {
     window.history.pushState({}, "", "/");
     setRoute({ kind: "notebook" });
+  };
+
+  const handlePageTextCanvasChange = (
+    pageId: PageId,
+    snapshot: PageTextCanvasSnapshot
+  ) => {
+    updateNotebook((currentNotebook) =>
+      replacePageTextCanvasItems(
+        currentNotebook,
+        pageId,
+        snapshot.textItems,
+        snapshot.regions
+      )
+    );
   };
 
   const updateNotebook = (updater: (currentNotebook: Notebook) => Notebook) => {
@@ -291,7 +327,12 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             onPageOpen={handlePageOpen}
           />
         ) : (
-          <ActivePageView activePage={activePage} onNotebookOpen={handleNotebookOpen} />
+          <ActivePageView
+            activePage={activePage}
+            notebook={notebook}
+            onNotebookOpen={handleNotebookOpen}
+            onPageTextCanvasChange={handlePageTextCanvasChange}
+          />
         )}
       </section>
     </main>
@@ -338,10 +379,20 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
 
 interface ActivePageViewProps {
   readonly activePage: ActivePage;
+  readonly notebook: Notebook;
   readonly onNotebookOpen: () => void;
+  readonly onPageTextCanvasChange: (
+    pageId: PageId,
+    snapshot: PageTextCanvasSnapshot
+  ) => void;
 }
 
-const ActivePageView = ({ activePage, onNotebookOpen }: ActivePageViewProps) => {
+const ActivePageView = ({
+  activePage,
+  notebook,
+  onNotebookOpen,
+  onPageTextCanvasChange
+}: ActivePageViewProps) => {
   if (activePage.kind === "invalid-section") {
     return (
       <div className="page-canvas" role="alert">
@@ -378,13 +429,108 @@ const ActivePageView = ({ activePage, onNotebookOpen }: ActivePageViewProps) => 
       <h3 id="active-page-title">{activePage.page.title}</h3>
       <p>Page Type: unset</p>
       <p>
-        This blank Page is ready for rough interview-prep work and can be reopened
-        from its URL after reload.
+        Use tldraw text shapes for rough interview-prep work. Text Canvas Items
+        autosave with app-owned Canvas Regions and reload at the same location.
       </p>
+      <PageTextCanvas
+        page={activePage.page}
+        notebook={notebook}
+        onPageTextCanvasChange={onPageTextCanvasChange}
+      />
       <button type="button" onClick={onNotebookOpen}>
         Back to Notebook
       </button>
     </article>
+  );
+};
+
+interface PageTextCanvasProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly onPageTextCanvasChange: (
+    pageId: PageId,
+    snapshot: PageTextCanvasSnapshot
+  ) => void;
+}
+
+const PageTextCanvas = ({
+  page,
+  notebook,
+  onPageTextCanvasChange
+}: PageTextCanvasProps) => {
+  const saveTimeoutRef = useRef<number | undefined>(undefined);
+  const initialTextItems = useMemo(
+    () => notebook.canvasItems.filter((canvasItem) => canvasItem.pageId === page.id),
+    [notebook.canvasItems, page.id]
+  );
+  const initialRegions = useMemo(
+    () => notebook.canvasRegions.filter((region) => region.pageId === page.id),
+    [notebook.canvasRegions, page.id]
+  );
+
+  const handleMount = useCallback(
+    (editor: TldrawEditor) => {
+      const drafts = toTldrawTextShapeDrafts(initialTextItems, initialRegions);
+
+      if (drafts.length > 0) {
+        editor.createShapes([...drafts]);
+      }
+
+      editor.setCurrentTool("text");
+
+      const persistTextShapes = () => {
+        const shapes = editor.getCurrentPageShapes();
+        const boundsByShapeId = new Map<string, ReturnType<TldrawEditor["getShapePageBounds"]>>(
+          shapes.map((shape) => [shape.id, editor.getShapePageBounds(shape)])
+        );
+
+        for (const shape of shapes) {
+          if (shapeNeedsCanvasItemMeta(shape)) {
+            editor.updateShape({
+              id: shape.id,
+              type: "text",
+              meta: {
+                ...shape.meta,
+                canvasItemId: canvasItemIdForShape(shape)
+              }
+            });
+          }
+        }
+
+        onPageTextCanvasChange(
+          page.id,
+          textCanvasSnapshotFromTldrawShapes(page.id, shapes, (shape) =>
+            boundsByShapeId.get(shape.id)
+          )
+        );
+      };
+
+      const queuePersist = () => {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = window.setTimeout(persistTextShapes, 250);
+      };
+
+      const unsubscribe = editor.store.listen(queuePersist, {
+        source: "user",
+        scope: "document"
+      });
+
+      return () => {
+        window.clearTimeout(saveTimeoutRef.current);
+        unsubscribe();
+      };
+    },
+    [initialRegions, initialTextItems, onPageTextCanvasChange, page.id]
+  );
+
+  return (
+    <div
+      className="tldraw-canvas"
+      data-testid="tldraw-page-canvas"
+      aria-label={`${page.title} tldraw text canvas`}
+    >
+      <Tldraw autoFocus initialState="text" onMount={handleMount} />
+    </div>
   );
 };
 
