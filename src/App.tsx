@@ -2,6 +2,7 @@ import {
   ChangeEvent,
   ClipboardEvent,
   ComponentProps,
+  DragEvent,
   FormEvent,
   useCallback,
   useEffect,
@@ -31,18 +32,15 @@ import {
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
+  type CanvasItem,
   type CanvasItemId,
-  type CodeBlockCanvasItem,
   createCanvasItemId,
   createPageId,
   createSectionId,
-  type DiagramCanvasItem,
   type DiagramItemKind,
   type FreehandDrawingCanvasItem,
   getPage,
   getSection,
-  type ImageCanvasItem,
-  type LinkCardCanvasItem,
   Notebook,
   Page,
   PageId,
@@ -55,7 +53,7 @@ import {
   updateCodeBlockCanvasItem,
   updateDiagramCanvasItem,
   updateImageCanvasItemMetadata,
-  updateLinkCardCanvasItemTags,
+  updateLinkCardCanvasItemMetadata,
   updateTextCanvasItemTags
 } from "./domain/notebook";
 import {
@@ -136,6 +134,10 @@ type PageRoute =
       readonly pageId: PageId;
     };
 type OpenPageRoute = Extract<PageRoute, { readonly kind: "page" }>;
+type InspectableCanvasItem = Exclude<
+  CanvasItem,
+  { readonly type: "freehand-drawing" }
+>;
 
 type ActivePage =
   | {
@@ -774,14 +776,16 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
-  const handleLinkCardTagsChange = (
+  const handleLinkCardMetadataChange = (
     canvasItemId: CanvasItemId,
+    note: string,
     tagDraft: string
   ) => {
     updateNotebook((currentNotebook) =>
-      updateLinkCardCanvasItemTags(
+      updateLinkCardCanvasItemMetadata(
         currentNotebook,
         canvasItemId,
+        note,
         tagsFromDraft(tagDraft)
       )
     );
@@ -992,7 +996,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           onImageItemAdd={handleImageItemAdd}
           onImageItemMetadataChange={handleImageItemMetadataChange}
           onLinkCardAdd={handleLinkCardAdd}
-          onLinkCardTagsChange={handleLinkCardTagsChange}
+          onLinkCardMetadataChange={handleLinkCardMetadataChange}
           onPageTextCanvasChange={handlePageTextCanvasChange}
           onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
         />
@@ -1143,7 +1147,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             onImageItemAdd={handleImageItemAdd}
             onImageItemMetadataChange={handleImageItemMetadataChange}
             onLinkCardAdd={handleLinkCardAdd}
-            onLinkCardTagsChange={handleLinkCardTagsChange}
+            onLinkCardMetadataChange={handleLinkCardMetadataChange}
             onPageTextCanvasChange={handlePageTextCanvasChange}
             onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
           />
@@ -1439,8 +1443,9 @@ interface ActivePageViewProps {
     note: string,
     tagDraft: string
   ) => void;
-  readonly onLinkCardTagsChange: (
+  readonly onLinkCardMetadataChange: (
     canvasItemId: CanvasItemId,
+    note: string,
     tagDraft: string
   ) => void;
   readonly onImageItemAdd: (
@@ -1481,10 +1486,13 @@ const ActivePageView = ({
   onImageItemAdd,
   onImageItemMetadataChange,
   onLinkCardAdd,
-  onLinkCardTagsChange,
+  onLinkCardMetadataChange,
   onPageTextCanvasChange,
   onTextCanvasItemTagsChange
 }: ActivePageViewProps) => {
+  const [inspectedCanvasItemId, setInspectedCanvasItemId] =
+    useState<CanvasItemId | null>(null);
+
   if (activePage.kind === "invalid-section") {
     return (
       <div className="page-canvas" role="alert">
@@ -1514,6 +1522,18 @@ const ActivePageView = ({
       </div>
     );
   }
+
+  const pageCanvasItems = notebook.canvasItems.filter(
+    (canvasItem): canvasItem is InspectableCanvasItem =>
+      canvasItem.pageId === activePage.page.id &&
+      canvasItem.type !== "freehand-drawing"
+  );
+  const inspectedCanvasItem =
+    inspectedCanvasItemId === null
+      ? null
+      : (pageCanvasItems.find(
+          (canvasItem) => canvasItem.id === inspectedCanvasItemId
+        ) ?? null);
 
   return (
     <article className="page-canvas" aria-labelledby="active-page-title">
@@ -1549,35 +1569,39 @@ const ActivePageView = ({
           )
         }
         onPageTextCanvasChange={onPageTextCanvasChange}
-        onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
       />
       <PageLinkCards
         page={activePage.page}
-        notebook={notebook}
         onLinkCardAdd={onLinkCardAdd}
-        onLinkCardTagsChange={onLinkCardTagsChange}
       />
       <PageImageItems
         page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
         onImageItemAdd={onImageItemAdd}
-        onImageItemMetadataChange={onImageItemMetadataChange}
       />
       <PageDiagramItems
         page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
         onDiagramItemAdd={onDiagramItemAdd}
-        onDiagramItemChange={onDiagramItemChange}
       />
       <PageCodeBlocks
         page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
         onCodeBlockAdd={onCodeBlockAdd}
-        onCodeBlockChange={onCodeBlockChange}
       />
+      <CanvasItemCards
+        canvasItems={pageCanvasItems}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        onInspect={setInspectedCanvasItemId}
+      />
+      {inspectedCanvasItem !== null ? (
+        <ItemInspector
+          canvasItem={inspectedCanvasItem}
+          onClose={() => setInspectedCanvasItemId(null)}
+          onCodeBlockChange={onCodeBlockChange}
+          onDiagramItemChange={onDiagramItemChange}
+          onImageItemMetadataChange={onImageItemMetadataChange}
+          onLinkCardMetadataChange={onLinkCardMetadataChange}
+          onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
+        />
+      ) : null}
     </article>
   );
 };
@@ -1645,10 +1669,6 @@ interface PageTextCanvasProps {
     pageId: PageId,
     snapshot: PageTldrawCanvasSnapshot
   ) => void;
-  readonly onTextCanvasItemTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
 }
 
 const PageTextCanvas = ({
@@ -1656,8 +1676,7 @@ const PageTextCanvas = ({
   notebook,
   highlightedCanvasItemId,
   showEmptyCanvasPrompts,
-  onPageTextCanvasChange,
-  onTextCanvasItemTagsChange
+  onPageTextCanvasChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
   const editorRef = useRef<TldrawEditor | null>(null);
@@ -1801,10 +1820,6 @@ const PageTextCanvas = ({
           onMount={handleMount}
         />
       </div>
-      <TextCanvasItemTags
-        pageTextItems={initialTextItems}
-        onTagsChange={onTextCanvasItemTagsChange}
-      />
     </>
   );
 };
@@ -1848,86 +1863,23 @@ const EmptyCanvasPrompts = ({
   </div>
 );
 
-interface TextCanvasItemTagsProps {
-  readonly pageTextItems: readonly TextCanvasItem[];
-  readonly onTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
-}
-
-const TextCanvasItemTags = ({
-  pageTextItems,
-  onTagsChange
-}: TextCanvasItemTagsProps) => {
-  const [tagDrafts, setTagDrafts] = useState<Partial<Record<CanvasItemId, string>>>(
-    {}
-  );
-
-  if (pageTextItems.length === 0) {
-    return null;
-  }
-
-  const handleTagDraftChange = (canvasItemId: CanvasItemId, tagDraft: string) => {
-    setTagDrafts((currentDrafts) => ({
-      ...currentDrafts,
-      [canvasItemId]: tagDraft
-    }));
-    onTagsChange(canvasItemId, tagDraft);
-  };
-
-  return (
-    <div className="text-item-tags" aria-label="Text Canvas Item Tags">
-      <h4>Optional Tags</h4>
-      <p>
-        Add comma-separated Tags to text Rough Work without changing the canvas.
-      </p>
-      {pageTextItems.map((textItem) => (
-        <label key={textItem.id} htmlFor={`${textItem.id}-tags`}>
-          Tags for {textItem.text}
-          <input
-            id={`${textItem.id}-tags`}
-            value={tagDrafts[textItem.id] ?? textItem.tags.join(", ")}
-            placeholder="e.g. graphs, bfs"
-            onChange={(event) =>
-              handleTagDraftChange(textItem.id, event.target.value)
-            }
-          />
-        </label>
-      ))}
-    </div>
-  );
-};
-
 interface PageLinkCardsProps {
   readonly page: Page;
-  readonly notebook: Notebook;
   readonly onLinkCardAdd: (
     pageId: PageId,
     url: string,
     note: string,
     tagDraft: string
   ) => void;
-  readonly onLinkCardTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
 }
 
 const PageLinkCards = ({
   page,
-  notebook,
-  onLinkCardAdd,
-  onLinkCardTagsChange
+  onLinkCardAdd
 }: PageLinkCardsProps) => {
   const [url, setUrl] = useState("");
   const [note, setNote] = useState("");
   const [tagDraft, setTagDraft] = useState("");
-  const pageLinkCards = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is LinkCardCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "link-card"
-      ),
-    [notebook.canvasItems, page.id]
-  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1978,37 +1930,12 @@ const PageLinkCards = ({
         </label>
         <button type="submit">Add Link Card</button>
       </form>
-      {pageLinkCards.length > 0 ? (
-        <ul className="link-card-list" aria-label="Link Cards on this Page">
-          {pageLinkCards.map((linkCard) => (
-            <li key={linkCard.id}>
-              <a href={linkCard.url} rel="noreferrer" target="_blank">
-                {linkCard.url}
-              </a>
-              {linkCard.note.length > 0 ? <p>{linkCard.note}</p> : null}
-              <label htmlFor={`${linkCard.id}-tags`}>
-                Tags for {linkCard.url}
-                <input
-                  id={`${linkCard.id}-tags`}
-                  defaultValue={linkCard.tags.join(", ")}
-                  placeholder="e.g. graphs, research"
-                  onChange={(event) =>
-                    onLinkCardTagsChange(linkCard.id, event.target.value)
-                  }
-                />
-              </label>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 };
 
 interface PageImageItemsProps {
   readonly page: Page;
-  readonly notebook: Notebook;
-  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onImageItemAdd: (
     pageId: PageId,
     dataUrl: string,
@@ -2016,19 +1943,11 @@ interface PageImageItemsProps {
     caption: string,
     tagDraft: string
   ) => void;
-  readonly onImageItemMetadataChange: (
-    canvasItemId: CanvasItemId,
-    caption: string,
-    tagDraft: string
-  ) => void;
 }
 
 const PageImageItems = ({
   page,
-  notebook,
-  highlightedCanvasItemId,
-  onImageItemAdd,
-  onImageItemMetadataChange
+  onImageItemAdd
 }: PageImageItemsProps) => {
   const [imageDraft, setImageDraft] = useState<{
     readonly dataUrl: string;
@@ -2037,14 +1956,6 @@ const PageImageItems = ({
   } | null>(null);
   const [caption, setCaption] = useState("");
   const [tagDraft, setTagDraft] = useState("");
-  const pageImageItems = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is ImageCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "image"
-      ),
-    [notebook.canvasItems, page.id]
-  );
 
   const readImageFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -2074,6 +1985,21 @@ const PageImageItems = ({
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const imageFile = Array.from(event.clipboardData.files).find((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (imageFile !== undefined) {
+      event.preventDefault();
+      readImageFile(imageFile);
+    }
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    const imageFile = Array.from(event.dataTransfer.files).find((file) =>
       file.type.startsWith("image/")
     );
 
@@ -2114,6 +2040,8 @@ const PageImageItems = ({
       <form className="image-item-form" onSubmit={handleSubmit}>
         <div
           className="image-paste-target"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
           onPaste={handlePaste}
           tabIndex={0}
           role="button"
@@ -2157,95 +2085,14 @@ const PageImageItems = ({
           Add Image Item
         </button>
       </form>
-      {pageImageItems.length > 0 ? (
-        <ul className="image-item-list" aria-label="Image Items on this Page">
-          {pageImageItems.map((imageItem) => (
-            <EditableImageItem
-              imageItem={imageItem}
-              isHighlighted={highlightedCanvasItemId === imageItem.id}
-              key={imageItem.id}
-              onImageItemMetadataChange={onImageItemMetadataChange}
-            />
-          ))}
-        </ul>
-      ) : null}
     </section>
-  );
-};
-
-interface EditableImageItemProps {
-  readonly imageItem: ImageCanvasItem;
-  readonly isHighlighted: boolean;
-  readonly onImageItemMetadataChange: (
-    canvasItemId: CanvasItemId,
-    caption: string,
-    tagDraft: string
-  ) => void;
-}
-
-const EditableImageItem = ({
-  imageItem,
-  isHighlighted,
-  onImageItemMetadataChange
-}: EditableImageItemProps) => {
-  const [captionDraft, setCaptionDraft] = useState(imageItem.caption);
-  const [tagDraft, setTagDraft] = useState(imageItem.tags.join(", "));
-
-  const handleCaptionChange = (nextCaption: string) => {
-    setCaptionDraft(nextCaption);
-    onImageItemMetadataChange(imageItem.id, nextCaption, tagDraft);
-  };
-
-  const handleTagsChange = (nextTagDraft: string) => {
-    setTagDraft(nextTagDraft);
-    onImageItemMetadataChange(imageItem.id, captionDraft, nextTagDraft);
-  };
-
-  return (
-    <li className={isHighlighted ? "image-item-list__item--highlighted" : undefined}>
-      {isHighlighted ? (
-        <span role="status" aria-label="Highlighted Image Item Canvas Region">
-          Highlighted Image Item
-        </span>
-      ) : null}
-      <img
-        alt={imageItem.caption || "Image Item"}
-        src={imageItem.dataUrl}
-      />
-      <label htmlFor={`${imageItem.id}-caption`}>
-        Edit Image Item caption
-        <input
-          id={`${imageItem.id}-caption`}
-          value={captionDraft}
-          placeholder="Optional caption"
-          onChange={(event) => handleCaptionChange(event.target.value)}
-        />
-      </label>
-      <label htmlFor={`${imageItem.id}-tags`}>
-        Tags for this Image Item
-        <input
-          id={`${imageItem.id}-tags`}
-          value={tagDraft}
-          placeholder="e.g. diagrams, heap"
-          onChange={(event) => handleTagsChange(event.target.value)}
-        />
-      </label>
-    </li>
   );
 };
 
 interface PageDiagramItemsProps {
   readonly page: Page;
-  readonly notebook: Notebook;
-  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onDiagramItemAdd: (
     pageId: PageId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onDiagramItemChange: (
-    canvasItemId: CanvasItemId,
     kind: DiagramItemKind,
     label: string,
     tagDraft: string
@@ -2261,22 +2108,11 @@ const DIAGRAM_ITEM_KINDS: readonly DiagramItemKind[] = [
 
 const PageDiagramItems = ({
   page,
-  notebook,
-  highlightedCanvasItemId,
-  onDiagramItemAdd,
-  onDiagramItemChange
+  onDiagramItemAdd
 }: PageDiagramItemsProps) => {
   const [kind, setKind] = useState<DiagramItemKind>("box");
   const [label, setLabel] = useState("");
   const [tagDraft, setTagDraft] = useState("");
-  const pageDiagramItems = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is DiagramCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "diagram"
-      ),
-    [notebook.canvasItems, page.id]
-  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2333,121 +2169,14 @@ const PageDiagramItems = ({
           Add Diagram Item
         </button>
       </form>
-      {pageDiagramItems.length > 0 ? (
-        <ul className="diagram-item-list" aria-label="Diagram Items on this Page">
-          {pageDiagramItems.map((diagramItem) => (
-            <EditableDiagramItem
-              diagramItem={diagramItem}
-              isHighlighted={highlightedCanvasItemId === diagramItem.id}
-              key={diagramItem.id}
-              onDiagramItemChange={onDiagramItemChange}
-            />
-          ))}
-        </ul>
-      ) : null}
     </section>
-  );
-};
-
-interface EditableDiagramItemProps {
-  readonly diagramItem: DiagramCanvasItem;
-  readonly isHighlighted: boolean;
-  readonly onDiagramItemChange: (
-    canvasItemId: CanvasItemId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-}
-
-const EditableDiagramItem = ({
-  diagramItem,
-  isHighlighted,
-  onDiagramItemChange
-}: EditableDiagramItemProps) => {
-  const [kindDraft, setKindDraft] = useState<DiagramItemKind>(diagramItem.kind);
-  const [labelDraft, setLabelDraft] = useState(diagramItem.label);
-  const [tagDraft, setTagDraft] = useState(diagramItem.tags.join(", "));
-
-  const handleKindChange = (nextKind: DiagramItemKind) => {
-    setKindDraft(nextKind);
-
-    if (labelDraft.trim().length > 0) {
-      onDiagramItemChange(diagramItem.id, nextKind, labelDraft, tagDraft);
-    }
-  };
-
-  const handleLabelChange = (nextLabel: string) => {
-    setLabelDraft(nextLabel);
-
-    if (nextLabel.trim().length > 0) {
-      onDiagramItemChange(diagramItem.id, kindDraft, nextLabel, tagDraft);
-    }
-  };
-
-  const handleTagsChange = (nextTagDraft: string) => {
-    setTagDraft(nextTagDraft);
-
-    if (labelDraft.trim().length > 0) {
-      onDiagramItemChange(diagramItem.id, kindDraft, labelDraft, nextTagDraft);
-    }
-  };
-
-  return (
-    <li className={isHighlighted ? "diagram-item-list__item--highlighted" : undefined}>
-      {isHighlighted ? (
-        <span role="status" aria-label="Highlighted Diagram Item Canvas Region">
-          Highlighted Diagram Item
-        </span>
-      ) : null}
-      <strong>{diagramKindLabel(kindDraft)}</strong>
-      <label htmlFor={`${diagramItem.id}-kind`}>
-        Diagram Item kind
-        <select
-          id={`${diagramItem.id}-kind`}
-          value={kindDraft}
-          onChange={(event) => handleKindChange(event.target.value as DiagramItemKind)}
-        >
-          {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
-            <option key={diagramKind} value={diagramKind}>
-              {diagramKindLabel(diagramKind)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label htmlFor={`${diagramItem.id}-label`}>
-        Edit Diagram Item label
-        <input
-          id={`${diagramItem.id}-label`}
-          value={labelDraft}
-          placeholder="Diagram label"
-          onChange={(event) => handleLabelChange(event.target.value)}
-        />
-      </label>
-      <label htmlFor={`${diagramItem.id}-tags`}>
-        Tags for this Diagram Item
-        <input
-          id={`${diagramItem.id}-tags`}
-          value={tagDraft}
-          placeholder="e.g. queues, availability"
-          onChange={(event) => handleTagsChange(event.target.value)}
-        />
-      </label>
-    </li>
   );
 };
 
 interface PageCodeBlocksProps {
   readonly page: Page;
-  readonly notebook: Notebook;
-  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onCodeBlockAdd: (
     pageId: PageId,
-    code: string,
-    tagDraft: string
-  ) => void;
-  readonly onCodeBlockChange: (
-    canvasItemId: CanvasItemId,
     code: string,
     tagDraft: string
   ) => void;
@@ -2455,21 +2184,10 @@ interface PageCodeBlocksProps {
 
 const PageCodeBlocks = ({
   page,
-  notebook,
-  highlightedCanvasItemId,
-  onCodeBlockAdd,
-  onCodeBlockChange
+  onCodeBlockAdd
 }: PageCodeBlocksProps) => {
   const [code, setCode] = useState("");
   const [tagDraft, setTagDraft] = useState("");
-  const pageCodeBlocks = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is CodeBlockCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "code-block"
-      ),
-    [notebook.canvasItems, page.id]
-  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2512,83 +2230,370 @@ const PageCodeBlocks = ({
           Add Code Block
         </button>
       </form>
-      {pageCodeBlocks.length > 0 ? (
-        <ul className="code-block-list" aria-label="Code Blocks on this Page">
-          {pageCodeBlocks.map((codeBlock) => (
-            <EditableCodeBlock
-              codeBlock={codeBlock}
-              isHighlighted={highlightedCanvasItemId === codeBlock.id}
-              key={codeBlock.id}
-              onCodeBlockChange={onCodeBlockChange}
-            />
-          ))}
-        </ul>
-      ) : null}
     </section>
   );
 };
 
-interface EditableCodeBlockProps {
-  readonly codeBlock: CodeBlockCanvasItem;
-  readonly isHighlighted: boolean;
+interface CanvasItemCardsProps {
+  readonly canvasItems: readonly InspectableCanvasItem[];
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onInspect: (canvasItemId: CanvasItemId) => void;
+}
+
+const CanvasItemCards = ({
+  canvasItems,
+  highlightedCanvasItemId,
+  onInspect
+}: CanvasItemCardsProps) => {
+  if (canvasItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="canvas-item-cards" aria-labelledby="canvas-items-title">
+      <div>
+        <p className="eyebrow">Canvas Items</p>
+        <h4 id="canvas-items-title">Hover Metadata</h4>
+        <p>
+          Hover or focus a Canvas Item for lightweight metadata. Open the Item
+          Inspector when you want to edit captions, notes, labels, code, or Tags.
+        </p>
+      </div>
+      <ul aria-label="Canvas Items on this Page">
+        {canvasItems.map((canvasItem) => (
+          <li
+            className={
+              highlightedCanvasItemId === canvasItem.id
+                ? "canvas-item-card canvas-item-card--highlighted"
+                : "canvas-item-card"
+            }
+            key={canvasItem.id}
+            tabIndex={0}
+          >
+            {highlightedCanvasItemId === canvasItem.id ? (
+              <span
+                className="canvas-item-card__highlight"
+                role="status"
+                aria-label={highlightLabelForCanvasItem(canvasItem)}
+              >
+                Highlighted {labelForCanvasItem(canvasItem)}
+              </span>
+            ) : null}
+            <CanvasItemPreview canvasItem={canvasItem} />
+            <div className="hover-metadata" aria-label="Hover Metadata">
+              <strong>{labelForCanvasItem(canvasItem)}</strong>
+              <span>{summaryForCanvasItem(canvasItem)}</span>
+              {tagsForCanvasItem(canvasItem).length > 0 ? (
+                <span>
+                  Tags: {tagsForCanvasItem(canvasItem).map((tag) => `#${tag}`).join(", ")}
+                </span>
+              ) : (
+                <span>No Tags yet</span>
+              )}
+            </div>
+            <button type="button" onClick={() => onInspect(canvasItem.id)}>
+              Open Item Inspector
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
+interface CanvasItemPreviewProps {
+  readonly canvasItem: InspectableCanvasItem;
+}
+
+const CanvasItemPreview = ({ canvasItem }: CanvasItemPreviewProps) => {
+  if (canvasItem.type === "link-card") {
+    return (
+      <a href={canvasItem.url} rel="noreferrer" target="_blank">
+        {canvasItem.url}
+      </a>
+    );
+  }
+
+  if (canvasItem.type === "image") {
+    return (
+      <img
+        alt={canvasItem.caption || "Image Item"}
+        src={canvasItem.dataUrl}
+      />
+    );
+  }
+
+  if (canvasItem.type === "diagram") {
+    return (
+      <div className="diagram-preview">
+        <strong>{diagramKindLabel(canvasItem.kind)}</strong>
+        <span>{canvasItem.label}</span>
+      </div>
+    );
+  }
+
+  if (canvasItem.type === "code-block") {
+    return <pre>{canvasItem.code}</pre>;
+  }
+
+  return <p>{canvasItem.text}</p>;
+};
+
+interface ItemInspectorProps {
+  readonly canvasItem: InspectableCanvasItem;
+  readonly onClose: () => void;
   readonly onCodeBlockChange: (
     canvasItemId: CanvasItemId,
     code: string,
     tagDraft: string
   ) => void;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
+  readonly onLinkCardMetadataChange: (
+    canvasItemId: CanvasItemId,
+    note: string,
+    tagDraft: string
+  ) => void;
+  readonly onTextCanvasItemTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
 }
 
-const EditableCodeBlock = ({
-  codeBlock,
-  isHighlighted,
-  onCodeBlockChange
-}: EditableCodeBlockProps) => {
-  const [codeDraft, setCodeDraft] = useState(codeBlock.code);
-  const [tagDraft, setTagDraft] = useState(codeBlock.tags.join(", "));
+const ItemInspector = ({
+  canvasItem,
+  onClose,
+  onCodeBlockChange,
+  onDiagramItemChange,
+  onImageItemMetadataChange,
+  onLinkCardMetadataChange,
+  onTextCanvasItemTagsChange
+}: ItemInspectorProps) => {
+  const [codeDraft, setCodeDraft] = useState(
+    canvasItem.type === "code-block" ? canvasItem.code : ""
+  );
+  const [captionDraft, setCaptionDraft] = useState(
+    canvasItem.type === "image" ? canvasItem.caption : ""
+  );
+  const [noteDraft, setNoteDraft] = useState(
+    canvasItem.type === "link-card" ? canvasItem.note : ""
+  );
+  const [kindDraft, setKindDraft] = useState<DiagramItemKind>(
+    canvasItem.type === "diagram" ? canvasItem.kind : "box"
+  );
+  const [labelDraft, setLabelDraft] = useState(
+    canvasItem.type === "diagram" ? canvasItem.label : ""
+  );
+  const [tagDraft, setTagDraft] = useState(tagsForCanvasItem(canvasItem).join(", "));
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+
+    if (canvasItem.type === "text") {
+      onTextCanvasItemTagsChange(canvasItem.id, nextTagDraft);
+      return;
+    }
+
+    if (canvasItem.type === "link-card") {
+      onLinkCardMetadataChange(canvasItem.id, noteDraft, nextTagDraft);
+      return;
+    }
+
+    if (canvasItem.type === "image") {
+      onImageItemMetadataChange(canvasItem.id, captionDraft, nextTagDraft);
+      return;
+    }
+
+    if (canvasItem.type === "diagram" && labelDraft.trim().length > 0) {
+      onDiagramItemChange(canvasItem.id, kindDraft, labelDraft, nextTagDraft);
+      return;
+    }
+
+    if (canvasItem.type === "code-block" && codeDraft.trim().length > 0) {
+      onCodeBlockChange(canvasItem.id, codeDraft, nextTagDraft);
+    }
+  };
 
   const handleCodeChange = (nextCode: string) => {
     setCodeDraft(nextCode);
 
     if (nextCode.trim().length > 0) {
-      onCodeBlockChange(codeBlock.id, nextCode, tagDraft);
+      onCodeBlockChange(canvasItem.id, nextCode, tagDraft);
     }
   };
 
-  const handleTagsChange = (nextTagDraft: string) => {
-    setTagDraft(nextTagDraft);
+  const handleCaptionChange = (nextCaption: string) => {
+    setCaptionDraft(nextCaption);
+    onImageItemMetadataChange(canvasItem.id, nextCaption, tagDraft);
+  };
 
-    if (codeDraft.trim().length > 0) {
-      onCodeBlockChange(codeBlock.id, codeDraft, nextTagDraft);
+  const handleNoteChange = (nextNote: string) => {
+    setNoteDraft(nextNote);
+    onLinkCardMetadataChange(canvasItem.id, nextNote, tagDraft);
+  };
+
+  const handleDiagramKindChange = (nextKind: DiagramItemKind) => {
+    setKindDraft(nextKind);
+
+    if (labelDraft.trim().length > 0) {
+      onDiagramItemChange(canvasItem.id, nextKind, labelDraft, tagDraft);
+    }
+  };
+
+  const handleDiagramLabelChange = (nextLabel: string) => {
+    setLabelDraft(nextLabel);
+
+    if (nextLabel.trim().length > 0) {
+      onDiagramItemChange(canvasItem.id, kindDraft, nextLabel, tagDraft);
     }
   };
 
   return (
-    <li className={isHighlighted ? "code-block-list__item--highlighted" : undefined}>
-      {isHighlighted ? (
-        <span role="status" aria-label="Highlighted Code Block Canvas Region">
-          Highlighted Code Block
-        </span>
+    <aside
+      className="item-inspector"
+      aria-label="Item Inspector"
+      aria-labelledby="item-inspector-title"
+    >
+      <div className="item-inspector__header">
+        <div>
+          <p className="eyebrow">Item Inspector</p>
+          <h4 id="item-inspector-title">{labelForCanvasItem(canvasItem)}</h4>
+        </div>
+        <button type="button" onClick={onClose}>
+          Close Inspector
+        </button>
+      </div>
+      {canvasItem.type === "link-card" ? (
+        <label htmlFor={`${canvasItem.id}-inspector-note`}>
+          Inspector link notes
+          <textarea
+            id={`${canvasItem.id}-inspector-note`}
+            value={noteDraft}
+            placeholder="Why this URL matters for this Page"
+            onChange={(event) => handleNoteChange(event.target.value)}
+          />
+        </label>
       ) : null}
-      <label htmlFor={`${codeBlock.id}-code`}>
-        Edit Code Block
-        <textarea
-          id={`${codeBlock.id}-code`}
-          spellCheck={false}
-          value={codeDraft}
-          onChange={(event) => handleCodeChange(event.target.value)}
-        />
-      </label>
-      <label htmlFor={`${codeBlock.id}-tags`}>
-        Tags for this Code Block
+      {canvasItem.type === "image" ? (
+        <label htmlFor={`${canvasItem.id}-inspector-caption`}>
+          Inspector Image Item caption
+          <input
+            id={`${canvasItem.id}-inspector-caption`}
+            value={captionDraft}
+            placeholder="Optional caption"
+            onChange={(event) => handleCaptionChange(event.target.value)}
+          />
+        </label>
+      ) : null}
+      {canvasItem.type === "diagram" ? (
+        <>
+          <label htmlFor={`${canvasItem.id}-inspector-kind`}>
+            Inspector Diagram Item kind
+            <select
+              id={`${canvasItem.id}-inspector-kind`}
+              value={kindDraft}
+              onChange={(event) =>
+                handleDiagramKindChange(event.target.value as DiagramItemKind)
+              }
+            >
+              {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
+                <option key={diagramKind} value={diagramKind}>
+                  {diagramKindLabel(diagramKind)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor={`${canvasItem.id}-inspector-label`}>
+            Inspector Diagram Item label
+            <input
+              id={`${canvasItem.id}-inspector-label`}
+              value={labelDraft}
+              placeholder="Diagram label"
+              onChange={(event) => handleDiagramLabelChange(event.target.value)}
+            />
+          </label>
+        </>
+      ) : null}
+      {canvasItem.type === "code-block" ? (
+        <label htmlFor={`${canvasItem.id}-inspector-code`}>
+          Inspector Code Block content
+          <textarea
+            id={`${canvasItem.id}-inspector-code`}
+            spellCheck={false}
+            value={codeDraft}
+            onChange={(event) => handleCodeChange(event.target.value)}
+          />
+        </label>
+      ) : null}
+      <label htmlFor={`${canvasItem.id}-inspector-tags`}>
+        Inspector Tags
         <input
-          id={`${codeBlock.id}-tags`}
+          id={`${canvasItem.id}-inspector-tags`}
           value={tagDraft}
-          placeholder="e.g. arrays, pseudocode"
+          placeholder="e.g. graphs, bfs"
           onChange={(event) => handleTagsChange(event.target.value)}
         />
       </label>
-    </li>
+    </aside>
   );
+};
+
+const labelForCanvasItem = (canvasItem: InspectableCanvasItem): string => {
+  if (canvasItem.type === "link-card") {
+    return "Link Card";
+  }
+
+  if (canvasItem.type === "image") {
+    return "Image Item";
+  }
+
+  if (canvasItem.type === "diagram") {
+    return "Diagram Item";
+  }
+
+  if (canvasItem.type === "code-block") {
+    return "Code Block";
+  }
+
+  return "Text Canvas Item";
+};
+
+const highlightLabelForCanvasItem = (canvasItem: InspectableCanvasItem): string =>
+  canvasItem.type === "text"
+    ? "Highlighted Text Canvas Item"
+    : `Highlighted ${labelForCanvasItem(canvasItem)} Canvas Region`;
+
+const tagsForCanvasItem = (
+  canvasItem: InspectableCanvasItem
+): readonly string[] => canvasItem.tags;
+
+const summaryForCanvasItem = (canvasItem: InspectableCanvasItem): string => {
+  if (canvasItem.type === "link-card") {
+    return canvasItem.note || canvasItem.url;
+  }
+
+  if (canvasItem.type === "image") {
+    return canvasItem.caption || "Local image or screenshot";
+  }
+
+  if (canvasItem.type === "diagram") {
+    return `${diagramKindLabel(canvasItem.kind)}: ${canvasItem.label}`;
+  }
+
+  if (canvasItem.type === "code-block") {
+    return canvasItem.code;
+  }
+
+  return canvasItem.text;
 };
 
 interface LocalSearchProps {

@@ -603,6 +603,139 @@ textarea:focus {
     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+.canvas-item-cards,
+.item-inspector {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: #fffdf7;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.canvas-item-cards h4,
+.canvas-item-cards p,
+.item-inspector h4 {
+  margin: 0;
+}
+
+.canvas-item-cards ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.85rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.canvas-item-card {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+  min-height: 11rem;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: #ffffff;
+  padding: 0.85rem;
+}
+
+.canvas-item-card:focus {
+  outline: 3px solid rgba(84, 104, 255, 0.18);
+}
+
+.canvas-item-card--highlighted {
+  border-color: #f5a400;
+  box-shadow: 0 0 0 4px rgba(245, 164, 0, 0.18);
+}
+
+.canvas-item-card__highlight {
+  color: #6a4500;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.canvas-item-card a {
+  color: #314ee8;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.canvas-item-card img {
+  max-width: 100%;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 0.65rem;
+}
+
+.canvas-item-card pre {
+  overflow: auto;
+  border-radius: 0.65rem;
+  background: #172033;
+  color: #fffdf7;
+  margin: 0;
+  padding: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.diagram-preview {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid rgba(84, 104, 255, 0.18);
+  border-radius: 0.85rem;
+  background: rgba(84, 104, 255, 0.08);
+  padding: 0.85rem;
+}
+
+.hover-metadata {
+  display: grid;
+  gap: 0.3rem;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  background: #f5f1e8;
+  color: #4d5871;
+  padding: 0 0.75rem;
+  transition:
+    opacity 120ms ease,
+    max-height 120ms ease,
+    padding 120ms ease;
+}
+
+.canvas-item-card:hover .hover-metadata,
+.canvas-item-card:focus-within .hover-metadata,
+.canvas-item-card:focus .hover-metadata {
+  opacity: 1;
+  max-height: 12rem;
+  padding: 0.75rem;
+}
+
+.item-inspector {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  box-shadow: 0 24px 70px rgba(23, 32, 51, 0.22);
+}
+
+.item-inspector__header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.item-inspector label {
+  display: grid;
+  gap: 0.5rem;
+  color: #4d5871;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
 .image-paste-target {
   border: 1px dashed #d1c8b5;
   border-radius: 0.85rem;

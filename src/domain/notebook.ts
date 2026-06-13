@@ -341,9 +341,10 @@ export const addLinkCardCanvasItem = (
   };
 };
 
-export const updateLinkCardCanvasItemTags = (
+export const updateLinkCardCanvasItemMetadata = (
   notebook: Notebook,
   canvasItemId: CanvasItemId,
+  note: string,
   nextTags: readonly string[]
 ): Notebook => {
   const linkCardExists = notebook.canvasItems.some(
@@ -358,7 +359,7 @@ export const updateLinkCardCanvasItemTags = (
     ...notebook,
     canvasItems: notebook.canvasItems.map((canvasItem) =>
       canvasItem.id === canvasItemId && canvasItem.type === "link-card"
-        ? { ...canvasItem, tags: normalizeTags(nextTags) }
+        ? { ...canvasItem, note: note.trim(), tags: normalizeTags(nextTags) }
         : canvasItem
     )
   };

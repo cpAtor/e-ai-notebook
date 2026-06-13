@@ -632,8 +632,11 @@ describe("App", () => {
 
     const { store } = await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.click(
+      await screen.findByRole("button", { name: "Open Item Inspector" })
+    );
     await user.type(
-      await screen.findByLabelText("Tags for Binary search invariant"),
+      await screen.findByLabelText("Inspector Tags"),
       "arrays, invariant"
     );
     await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
@@ -686,7 +689,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/Search Canvas Items/), "cache");
 
-    expect(await screen.findByText("Link Card")).toBeInTheDocument();
+    expect((await screen.findAllByText("Link Card")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #cache")).toBeInTheDocument();
     expect(screen.getAllByText(/Distributed cache research queue/).length).toBeGreaterThan(0);
     await waitFor(async () => {
@@ -736,20 +739,21 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Code Block Tags"), "arrays, two sum");
     await user.click(screen.getByRole("button", { name: "Add Code Block" }));
 
-    expect(await screen.findByDisplayValue(/const complement/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/const complement/)).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /run/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/judge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/sandbox/i)).not.toBeInTheDocument();
 
-    await user.clear(screen.getByLabelText("Edit Code Block"));
+    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
+    await user.clear(screen.getByLabelText("Inspector Code Block content"));
     await user.type(
-      screen.getByLabelText("Edit Code Block"),
+      screen.getByLabelText("Inspector Code Block content"),
       "return seen.get(complement);"
     );
     await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "two sum");
 
-    expect(await screen.findByText("Code Block")).toBeInTheDocument();
+    expect((await screen.findAllByText("Code Block")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #two sum")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
@@ -774,8 +778,8 @@ describe("App", () => {
     await renderApp();
 
     expect(
-      await screen.findByDisplayValue("return seen.get(complement);")
-    ).toBeInTheDocument();
+      (await screen.findAllByText("return seen.get(complement);")).length
+    ).toBeGreaterThan(0);
   });
 
   it("adds Image Items with optional captions and Tags, persists them, and searches without AI summaries", async () => {
@@ -817,15 +821,16 @@ describe("App", () => {
       screen.queryByRole("button", { name: /AI summary|classify/i })
     ).not.toBeInTheDocument();
 
-    await user.clear(screen.getByLabelText("Edit Image Item caption"));
+    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
+    await user.clear(screen.getByLabelText("Inspector Image Item caption"));
     await user.type(
-      screen.getByLabelText("Edit Image Item caption"),
+      screen.getByLabelText("Inspector Image Item caption"),
       "Updated failover sketch"
     );
     await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "availability");
 
-    expect(await screen.findByText("Image Item")).toBeInTheDocument();
+    expect((await screen.findAllByText("Image Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #availability")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
@@ -885,18 +890,22 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Add Diagram Item" }));
 
     expect(
-      await screen.findByDisplayValue("API Gateway publishes to queue")
+      await screen.findByText("API Gateway publishes to queue")
     ).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Diagram Item kind"), "sticky-note");
-    await user.clear(screen.getByLabelText("Edit Diagram Item label"));
+    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
+    await user.selectOptions(
+      screen.getByLabelText("Inspector Diagram Item kind"),
+      "sticky-note"
+    );
+    await user.clear(screen.getByLabelText("Inspector Diagram Item label"));
     await user.type(
-      screen.getByLabelText("Edit Diagram Item label"),
+      screen.getByLabelText("Inspector Diagram Item label"),
       "Queue absorbs write spikes"
     );
     await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
 
-    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
+    expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #backpressure")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
@@ -922,7 +931,7 @@ describe("App", () => {
     await renderApp();
 
     expect(
-      await screen.findByDisplayValue("Queue absorbs write spikes")
+      await screen.findByText("Queue absorbs write spikes")
     ).toBeInTheDocument();
   });
 
@@ -1126,7 +1135,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/Search Canvas Items/), "eviction");
 
-    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
+    expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #eviction")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
