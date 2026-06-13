@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addImageCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   createStarterNotebook,
@@ -153,5 +154,56 @@ describe("Local Index", () => {
         matchedTags: ["two sum"]
       })
     ]);
+  });
+
+  it("indexes Image Item captions and Tags without searching image bytes", () => {
+    const starterNotebook = createStarterNotebook();
+    const systemDesign = starterNotebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithPage = addBlankPage(
+      starterNotebook,
+      systemDesign.id,
+      "page_design"
+    );
+    const notebookWithImage = addImageCanvasItem(
+      notebookWithPage,
+      "page_design",
+      "canvas_item_diagram",
+      "data:image/png;base64,c2VjcmV0LWJ5dGVz",
+      "image/png",
+      "Load balancer failover sketch",
+      ["diagram", "availability"]
+    );
+    const index = buildLocalIndex(notebookWithImage);
+
+    expect(index.map((entry) => entry.id)).toEqual([
+      "page:page_design",
+      "image:canvas_item_diagram"
+    ]);
+    expect(searchLocalIndex(index, "failover")).toEqual([
+      expect.objectContaining({
+        id: "image:canvas_item_diagram",
+        canvasItemId: "canvas_item_diagram",
+        sourceLabel: "Image Item",
+        snippet: expect.stringContaining("Load balancer failover sketch")
+      })
+    ]);
+    expect(searchLocalIndex(index, "availability")).toEqual([
+      expect.objectContaining({
+        matchedTags: ["availability"],
+        canvasRegion: {
+          pageId: "page_design",
+          canvasItemId: "canvas_item_diagram",
+          bounds: { x: 0, y: 380, width: 360, height: 240 }
+        }
+      })
+    ]);
+    expect(searchLocalIndex(index, "secret-bytes")).toEqual([]);
   });
 });

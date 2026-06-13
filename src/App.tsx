@@ -1,4 +1,6 @@
 import {
+  ChangeEvent,
+  ClipboardEvent,
   ComponentProps,
   FormEvent,
   useCallback,
@@ -23,6 +25,7 @@ import {
 } from "./domain/localIndex";
 import {
   addCodeBlockCanvasItem,
+  addImageCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
@@ -33,6 +36,7 @@ import {
   createSectionId,
   getPage,
   getSection,
+  type ImageCanvasItem,
   type LinkCardCanvasItem,
   Notebook,
   Page,
@@ -44,6 +48,7 @@ import {
   SectionId,
   type TextCanvasItem,
   updateCodeBlockCanvasItem,
+  updateImageCanvasItemMetadata,
   updateLinkCardCanvasItemTags,
   updateTextCanvasItemTags
 } from "./domain/notebook";
@@ -308,6 +313,41 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
+  const handleImageItemAdd = (
+    pageId: PageId,
+    dataUrl: string,
+    mediaType: string,
+    caption: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      addImageCanvasItem(
+        currentNotebook,
+        pageId,
+        createCanvasItemId(),
+        dataUrl,
+        mediaType,
+        caption,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
+  const handleImageItemMetadataChange = (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      updateImageCanvasItemMetadata(
+        currentNotebook,
+        canvasItemId,
+        caption,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
   const handleCodeBlockAdd = (
     pageId: PageId,
     code: string,
@@ -487,6 +527,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             onNotebookOpen={handleNotebookOpen}
             onCodeBlockAdd={handleCodeBlockAdd}
             onCodeBlockChange={handleCodeBlockChange}
+            onImageItemAdd={handleImageItemAdd}
+            onImageItemMetadataChange={handleImageItemMetadataChange}
             onLinkCardAdd={handleLinkCardAdd}
             onLinkCardTagsChange={handleLinkCardTagsChange}
             onPageTextCanvasChange={handlePageTextCanvasChange}
@@ -607,6 +649,18 @@ interface ActivePageViewProps {
     canvasItemId: CanvasItemId,
     tagDraft: string
   ) => void;
+  readonly onImageItemAdd: (
+    pageId: PageId,
+    dataUrl: string,
+    mediaType: string,
+    caption: string,
+    tagDraft: string
+  ) => void;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTextCanvasSnapshot
@@ -624,6 +678,8 @@ const ActivePageView = ({
   onNotebookOpen,
   onCodeBlockAdd,
   onCodeBlockChange,
+  onImageItemAdd,
+  onImageItemMetadataChange,
   onLinkCardAdd,
   onLinkCardTagsChange,
   onPageTextCanvasChange,
@@ -673,6 +729,13 @@ const ActivePageView = ({
         notebook={notebook}
         onLinkCardAdd={onLinkCardAdd}
         onLinkCardTagsChange={onLinkCardTagsChange}
+      />
+      <PageImageItems
+        page={activePage.page}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        onImageItemAdd={onImageItemAdd}
+        onImageItemMetadataChange={onImageItemMetadataChange}
       />
       <PageCodeBlocks
         page={activePage.page}
@@ -978,6 +1041,235 @@ const PageLinkCards = ({
         </ul>
       ) : null}
     </section>
+  );
+};
+
+interface PageImageItemsProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onImageItemAdd: (
+    pageId: PageId,
+    dataUrl: string,
+    mediaType: string,
+    caption: string,
+    tagDraft: string
+  ) => void;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
+}
+
+const PageImageItems = ({
+  page,
+  notebook,
+  highlightedCanvasItemId,
+  onImageItemAdd,
+  onImageItemMetadataChange
+}: PageImageItemsProps) => {
+  const [imageDraft, setImageDraft] = useState<{
+    readonly dataUrl: string;
+    readonly mediaType: string;
+    readonly name: string;
+  } | null>(null);
+  const [caption, setCaption] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const pageImageItems = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is ImageCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "image"
+      ),
+    [notebook.canvasItems, page.id]
+  );
+
+  const readImageFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        setImageDraft({
+          dataUrl: reader.result,
+          mediaType: file.type,
+          name: file.name || "Pasted image"
+        });
+      }
+    });
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (file !== undefined) {
+      readImageFile(file);
+    }
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const imageFile = Array.from(event.clipboardData.files).find((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (imageFile !== undefined) {
+      event.preventDefault();
+      readImageFile(imageFile);
+    }
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (imageDraft === null) {
+      return;
+    }
+
+    onImageItemAdd(
+      page.id,
+      imageDraft.dataUrl,
+      imageDraft.mediaType,
+      caption,
+      tagDraft
+    );
+    setImageDraft(null);
+    setCaption("");
+    setTagDraft("");
+  };
+
+  return (
+    <section className="image-item-panel" aria-labelledby="image-items-title">
+      <div>
+        <h4 id="image-items-title">Image Items</h4>
+        <p>
+          Add or paste screenshots with optional captions and Tags. Image capture
+          stays local and does not require AI summaries or classification.
+        </p>
+      </div>
+      <form className="image-item-form" onSubmit={handleSubmit}>
+        <div
+          className="image-paste-target"
+          onPaste={handlePaste}
+          tabIndex={0}
+          role="button"
+          aria-label="Paste an image or screenshot"
+        >
+          Paste an image here, or choose a local image file.
+        </div>
+        <label htmlFor="image-item-file">
+          Image Item file
+          <input
+            id="image-item-file"
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+          />
+        </label>
+        {imageDraft !== null ? (
+          <p className="image-item-draft" aria-live="polite">
+            Ready to add: {imageDraft.name}
+          </p>
+        ) : null}
+        <label htmlFor="image-item-caption">
+          Optional caption
+          <input
+            id="image-item-caption"
+            placeholder="e.g. whiteboard trace after heap optimization"
+            value={caption}
+            onChange={(event) => setCaption(event.target.value)}
+          />
+        </label>
+        <label htmlFor="image-item-tags">
+          Image Tags
+          <input
+            id="image-item-tags"
+            placeholder="e.g. diagrams, heap"
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={imageDraft === null}>
+          Add Image Item
+        </button>
+      </form>
+      {pageImageItems.length > 0 ? (
+        <ul className="image-item-list" aria-label="Image Items on this Page">
+          {pageImageItems.map((imageItem) => (
+            <EditableImageItem
+              imageItem={imageItem}
+              isHighlighted={highlightedCanvasItemId === imageItem.id}
+              key={imageItem.id}
+              onImageItemMetadataChange={onImageItemMetadataChange}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+};
+
+interface EditableImageItemProps {
+  readonly imageItem: ImageCanvasItem;
+  readonly isHighlighted: boolean;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
+}
+
+const EditableImageItem = ({
+  imageItem,
+  isHighlighted,
+  onImageItemMetadataChange
+}: EditableImageItemProps) => {
+  const [captionDraft, setCaptionDraft] = useState(imageItem.caption);
+  const [tagDraft, setTagDraft] = useState(imageItem.tags.join(", "));
+
+  const handleCaptionChange = (nextCaption: string) => {
+    setCaptionDraft(nextCaption);
+    onImageItemMetadataChange(imageItem.id, nextCaption, tagDraft);
+  };
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+    onImageItemMetadataChange(imageItem.id, captionDraft, nextTagDraft);
+  };
+
+  return (
+    <li className={isHighlighted ? "image-item-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Image Item Canvas Region">
+          Highlighted Image Item
+        </span>
+      ) : null}
+      <img
+        alt={imageItem.caption || "Image Item"}
+        src={imageItem.dataUrl}
+      />
+      <label htmlFor={`${imageItem.id}-caption`}>
+        Edit Image Item caption
+        <input
+          id={`${imageItem.id}-caption`}
+          value={captionDraft}
+          placeholder="Optional caption"
+          onChange={(event) => handleCaptionChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${imageItem.id}-tags`}>
+        Tags for this Image Item
+        <input
+          id={`${imageItem.id}-tags`}
+          value={tagDraft}
+          placeholder="e.g. diagrams, heap"
+          onChange={(event) => handleTagsChange(event.target.value)}
+        />
+      </label>
+    </li>
   );
 };
 

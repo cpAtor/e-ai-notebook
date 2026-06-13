@@ -68,6 +68,15 @@ export const notebookSchemaV2 = notebookSchemaV1.extend({
           type: z.literal("code-block"),
           code: z.string(),
           tags: z.array(z.string()).default([])
+        }),
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
+          type: z.literal("image"),
+          dataUrl: z.string().startsWith("data:image/"),
+          mediaType: z.string().startsWith("image/"),
+          caption: z.string().default(""),
+          tags: z.array(z.string()).default([])
         })
       ])
     )

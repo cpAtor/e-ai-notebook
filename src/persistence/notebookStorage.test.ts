@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addImageCanvasItem,
   addBlankPage,
   addLinkCardCanvasItem,
   createStarterNotebook
@@ -124,6 +125,35 @@ describe("Notebook storage", () => {
 
     await expect(store.loadNotebook()).resolves.toEqual(notebookWithCodeBlock);
     expect(() => notebookSchemaV2.parse(notebookWithCodeBlock)).not.toThrow();
+    store.close();
+  });
+
+  it("persists Image Item source data through the versioned Notebook schema", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+    const systemDesign = notebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithPage = addBlankPage(notebook, systemDesign.id, "page_design");
+    const notebookWithImage = addImageCanvasItem(
+      notebookWithPage,
+      "page_design",
+      "canvas_item_image",
+      "data:image/png;base64,ZGlhZ3JhbQ==",
+      "image/png",
+      "Cache invalidation sketch",
+      ["cache"]
+    );
+
+    await store.saveNotebook(notebookWithImage);
+
+    await expect(store.loadNotebook()).resolves.toEqual(notebookWithImage);
+    expect(() => notebookSchemaV2.parse(notebookWithImage)).not.toThrow();
     store.close();
   });
 });

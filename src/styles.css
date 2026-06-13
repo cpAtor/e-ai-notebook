@@ -172,6 +172,8 @@ textarea:focus {
 .search-field,
 .code-block-form label,
 .code-block-list label,
+.image-item-form label,
+.image-item-list label,
 .link-card-form label,
 .link-card-list label {
   color: #4d5871;
@@ -278,9 +280,11 @@ textarea:focus {
 .search-result p,
 .code-block-panel p,
 .code-block-list label,
+.image-item-panel p,
 .link-card-panel p,
 .text-item-tags p,
 .text-item-tags label,
+.image-item-list label,
 .link-card-list label {
   color: #4d5871;
 }
@@ -309,6 +313,7 @@ textarea:focus {
 }
 
 .code-block-panel,
+.image-item-panel,
 .link-card-panel {
   display: grid;
   gap: 1rem;
@@ -321,6 +326,8 @@ textarea:focus {
 
 .code-block-panel h4,
 .code-block-panel p,
+.image-item-panel h4,
+.image-item-panel p,
 .link-card-panel h4,
 .link-card-panel p {
   margin: 0;
@@ -328,6 +335,8 @@ textarea:focus {
 
 .code-block-form,
 .code-block-list,
+.image-item-form,
+.image-item-list,
 .link-card-form,
 .link-card-list {
   display: grid;
@@ -336,6 +345,8 @@ textarea:focus {
 
 .code-block-form label,
 .code-block-list label,
+.image-item-form label,
+.image-item-list label,
 .link-card-form label,
 .link-card-list label {
   display: grid;
@@ -343,6 +354,7 @@ textarea:focus {
 }
 
 .code-block-list,
+.image-item-list,
 .link-card-list {
   padding: 0;
   margin: 0;
@@ -350,6 +362,7 @@ textarea:focus {
 }
 
 .code-block-list li,
+.image-item-list li,
 .link-card-list li {
   display: grid;
   gap: 0.65rem;
@@ -364,12 +377,39 @@ textarea:focus {
     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
-.code-block-list__item--highlighted {
+.image-paste-target {
+  border: 1px dashed #d1c8b5;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  color: #4d5871;
+  font-weight: 800;
+  padding: 1rem;
+}
+
+.image-paste-target:focus {
+  border-color: #5468ff;
+  outline: 3px solid rgba(84, 104, 255, 0.18);
+}
+
+.image-item-draft {
+  margin: 0;
+  font-weight: 800;
+}
+
+.image-item-list img {
+  max-width: min(100%, 360px);
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 0.65rem;
+}
+
+.code-block-list__item--highlighted,
+.image-item-list__item--highlighted {
   border-color: #f5a400;
   box-shadow: 0 0 0 4px rgba(245, 164, 0, 0.18);
 }
 
-.code-block-list__item--highlighted span {
+.code-block-list__item--highlighted span,
+.image-item-list__item--highlighted span {
   color: #6a4500;
   font-size: 0.85rem;
   font-weight: 800;

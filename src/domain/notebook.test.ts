@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCodeBlockCanvasItem,
+  addImageCanvasItem,
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
@@ -9,6 +10,7 @@ import {
   removeSection,
   renameSection,
   updateCodeBlockCanvasItem,
+  updateImageCanvasItemMetadata,
   updateTextCanvasItemTags
 } from "./notebook";
 
@@ -275,6 +277,47 @@ describe("Notebook Sections", () => {
     });
   });
 
+  it("adds Image Items with optional captions, Tags, and app-owned Canvas Regions", () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithImage = addImageCanvasItem(
+      notebookWithPage,
+      "page_dsa",
+      "canvas_item_heap_screenshot",
+      "data:image/png;base64,aGVhcA==",
+      "image/png",
+      "Heap trace after sift-down",
+      [" diagrams ", "diagrams", "heap"]
+    );
+    const editedNotebook = updateImageCanvasItemMetadata(
+      notebookWithImage,
+      "canvas_item_heap_screenshot",
+      "Updated heap trace",
+      ["priority queue"]
+    );
+
+    expect(editedNotebook.canvasItems).toContainEqual({
+      id: "canvas_item_heap_screenshot",
+      pageId: "page_dsa",
+      type: "image",
+      dataUrl: "data:image/png;base64,aGVhcA==",
+      mediaType: "image/png",
+      caption: "Updated heap trace",
+      tags: ["priority queue"]
+    });
+    expect(editedNotebook.canvasRegions).toContainEqual({
+      pageId: "page_dsa",
+      canvasItemId: "canvas_item_heap_screenshot",
+      bounds: { x: 0, y: 380, width: 360, height: 240 }
+    });
+  });
+
   it("rejects blank Pages for unknown Sections", () => {
     expect(() =>
       addBlankPage(createStarterNotebook(), "section_missing", "page_missing")
@@ -327,5 +370,38 @@ describe("Notebook Sections", () => {
         []
       )
     ).toThrow("Code Block content cannot be empty.");
+  });
+
+  it("rejects Image Items for unknown Pages or non-image data", () => {
+    expect(() =>
+      addImageCanvasItem(
+        createStarterNotebook(),
+        "page_missing",
+        "canvas_item_missing",
+        "data:image/png;base64,aGVhcA==",
+        "image/png",
+        "",
+        []
+      )
+    ).toThrow("Cannot add an Image Item for an unknown Page.");
+
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    expect(() =>
+      addImageCanvasItem(
+        addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+        "page_dsa",
+        "canvas_item_invalid",
+        "data:text/plain;base64,aGVhcA==",
+        "text/plain",
+        "",
+        []
+      )
+    ).toThrow("Image Item media type must be an image.");
   });
 });

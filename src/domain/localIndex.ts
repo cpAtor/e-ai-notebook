@@ -121,6 +121,10 @@ const searchableTextForCanvasItem = (
     return `${pagePathText} ${canvasItem.url} ${canvasItem.note} ${canvasItem.tags.join(" ")}`;
   }
 
+  if (canvasItem.type === "image") {
+    return `${pagePathText} ${canvasItem.caption} ${canvasItem.tags.join(" ")}`;
+  }
+
   return `${pagePathText} ${canvasItem.code} ${canvasItem.tags.join(" ")}`;
 };
 
@@ -131,6 +135,10 @@ const sourceLabelForCanvasItem = (canvasItem: CanvasItem): string => {
 
   if (canvasItem.type === "link-card") {
     return "Link Card";
+  }
+
+  if (canvasItem.type === "image") {
+    return "Image Item";
   }
 
   return "Code Block";

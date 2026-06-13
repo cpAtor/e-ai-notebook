@@ -35,10 +35,21 @@ export interface CodeBlockCanvasItem {
   readonly tags: readonly string[];
 }
 
+export interface ImageCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "image";
+  readonly dataUrl: string;
+  readonly mediaType: string;
+  readonly caption: string;
+  readonly tags: readonly string[];
+}
+
 export type CanvasItem =
   | TextCanvasItem
   | LinkCardCanvasItem
-  | CodeBlockCanvasItem;
+  | CodeBlockCanvasItem
+  | ImageCanvasItem;
 
 export interface CanvasRegion {
   readonly pageId: PageId;
@@ -377,6 +388,74 @@ export const updateCodeBlockCanvasItem = (
   };
 };
 
+export const addImageCanvasItem = (
+  notebook: Notebook,
+  pageId: PageId,
+  canvasItemId: CanvasItemId,
+  dataUrl: string,
+  mediaType: string,
+  caption: string,
+  tags: readonly string[]
+): Notebook => {
+  const pageExists = notebook.pages.some((page) => page.id === pageId);
+
+  if (!pageExists) {
+    throw new Error("Cannot add an Image Item for an unknown Page.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: [
+      ...notebook.canvasItems,
+      {
+        id: canvasItemId,
+        pageId,
+        type: "image",
+        dataUrl: normalizeImageDataUrl(dataUrl, mediaType),
+        mediaType: normalizeImageMediaType(mediaType),
+        caption: caption.trim(),
+        tags: normalizeTags(tags)
+      }
+    ],
+    canvasRegions: [
+      ...notebook.canvasRegions,
+      {
+        pageId,
+        canvasItemId,
+        bounds: { x: 0, y: 380, width: 360, height: 240 }
+      }
+    ]
+  };
+};
+
+export const updateImageCanvasItemMetadata = (
+  notebook: Notebook,
+  canvasItemId: CanvasItemId,
+  caption: string,
+  nextTags: readonly string[]
+): Notebook => {
+  const imageItemExists = notebook.canvasItems.some(
+    (canvasItem) => canvasItem.id === canvasItemId && canvasItem.type === "image"
+  );
+
+  if (!imageItemExists) {
+    throw new Error("Cannot edit an unknown Image Item.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: notebook.canvasItems.map((canvasItem) =>
+      canvasItem.id === canvasItemId && canvasItem.type === "image"
+        ? {
+            ...canvasItem,
+            caption: caption.trim(),
+            tags: normalizeTags(nextTags)
+          }
+        : canvasItem
+    )
+  };
+};
+
 export const createSectionId = (): SectionId => {
   if (globalThis.crypto?.randomUUID !== undefined) {
     return `section_${globalThis.crypto.randomUUID()}`;
@@ -440,4 +519,25 @@ const normalizeCodeBlockCode = (code: string): string => {
   }
 
   return trimmedCode;
+};
+
+const normalizeImageMediaType = (mediaType: string): string => {
+  const trimmedMediaType = mediaType.trim().toLowerCase();
+
+  if (!trimmedMediaType.startsWith("image/")) {
+    throw new Error("Image Item media type must be an image.");
+  }
+
+  return trimmedMediaType;
+};
+
+const normalizeImageDataUrl = (dataUrl: string, mediaType: string): string => {
+  const trimmedDataUrl = dataUrl.trim();
+  const normalizedMediaType = normalizeImageMediaType(mediaType);
+
+  if (!trimmedDataUrl.startsWith(`data:${normalizedMediaType};`)) {
+    throw new Error("Image Item source must be a local image data URL.");
+  }
+
+  return trimmedDataUrl;
 };

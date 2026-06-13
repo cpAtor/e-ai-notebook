@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   addCodeBlockCanvasItem,
+  addImageCanvasItem,
   addBlankPage,
   createStarterNotebook,
   replacePageTextCanvasItems,
@@ -437,6 +438,84 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("adds Image Items with optional captions and Tags, persists them, and searches without AI summaries", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Network is disabled by default."));
+    const firstRender = await renderApp();
+
+    const systemDesignRow = (
+      await screen.findByDisplayValue("System Design")
+    ).closest("li");
+
+    if (systemDesignRow === null) {
+      throw new Error("Expected System Design Section row.");
+    }
+
+    await user.click(
+      within(systemDesignRow).getByRole("button", { name: "New Blank Page" })
+    );
+    await user.upload(
+      await screen.findByLabelText("Image Item file"),
+      new File(["diagram"], "failover.png", { type: "image/png" })
+    );
+
+    expect(await screen.findByText("Ready to add: failover.png")).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Optional caption"),
+      "Load balancer failover sketch"
+    );
+    await user.type(screen.getByLabelText("Image Tags"), "diagrams, availability");
+    await user.click(screen.getByRole("button", { name: "Add Image Item" }));
+
+    expect(
+      await screen.findByRole("img", { name: "Load balancer failover sketch" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /AI summary|classify/i })
+    ).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Edit Image Item caption"));
+    await user.type(
+      screen.getByLabelText("Edit Image Item caption"),
+      "Updated failover sketch"
+    );
+    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "availability");
+
+    expect(await screen.findByText("Image Item")).toBeInTheDocument();
+    expect(screen.getByText("Matched Tags: #availability")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Image Item Canvas Region")
+    ).toBeInTheDocument();
+    await waitFor(async () => {
+      const reloadedNotebook = await firstRender.store.loadNotebook();
+      expect(reloadedNotebook.canvasItems).toContainEqual({
+        id: expect.stringMatching(/^canvas_item_/),
+        pageId: expect.stringMatching(/^page_/),
+        type: "image",
+        dataUrl: expect.stringMatching(/^data:image\/png;base64,/),
+        mediaType: "image/png",
+        caption: "Updated failover sketch",
+        tags: ["diagrams", "availability"]
+      });
+    });
+
+    const pagePath = window.location.pathname;
+    firstRender.unmount();
+    firstRender.store.close();
+    window.history.replaceState({}, "", pagePath);
+    await renderApp();
+
+    expect(
+      await screen.findByRole("img", { name: "Updated failover sketch" })
+    ).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("searches seeded Code Blocks and opens their highlighted Canvas Region", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
@@ -461,6 +540,37 @@ describe("App", () => {
 
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
+    ).toBeInTheDocument();
+  });
+
+  it("searches seeded Image Items and opens their highlighted Canvas Region", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const systemDesign = starterNotebook.sections.find(
+      (section) => section.title === "System Design"
+    );
+
+    if (systemDesign === undefined) {
+      throw new Error("Expected seeded System Design Section.");
+    }
+
+    const notebookWithImage = addImageCanvasItem(
+      addBlankPage(starterNotebook, systemDesign.id, "page_design"),
+      "page_design",
+      "canvas_item_image",
+      "data:image/png;base64,ZGlhZ3JhbQ==",
+      "image/png",
+      "Queue backpressure diagram",
+      ["queues"]
+    );
+
+    await renderApp(notebookWithImage);
+    await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+    await user.click(await screen.findByRole("button", { name: "Open Result" }));
+
+    expect(
+      await screen.findByLabelText("Highlighted Image Item Canvas Region")
     ).toBeInTheDocument();
   });
 });
