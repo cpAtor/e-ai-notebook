@@ -4,6 +4,7 @@ import {
   ComponentProps,
   DragEvent,
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -71,6 +72,7 @@ const DEFAULT_NEW_SECTION_TITLE = "New Section";
 const DEFAULT_SECTION_ID: SectionId = "section_inbox";
 const DEFAULT_PAGE_ID: PageId = "page_default";
 const LAST_OPENED_PAGE_STORAGE_KEY = "interview_prep_notebook:last_opened_page";
+const THEME_STORAGE_KEY = "interview_prep_notebook:theme";
 const defaultNotebookStore = createNotebookStore();
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   fonts: {
@@ -168,6 +170,9 @@ type BackupStatus =
   | { readonly kind: "success"; readonly message: string }
   | { readonly kind: "failed"; readonly message: string };
 
+type ThemePreference = "system" | "light" | "dark";
+type CanvasModalKind = "search" | "pages" | "backup" | "settings" | "shortcuts";
+
 interface RecoveryState {
   readonly message: string;
   readonly rawPayload: string;
@@ -201,6 +206,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedCanvasItemId, setHighlightedCanvasItemId] =
     useState<CanvasItemId | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    loadThemePreference
+  );
 
   useEffect(() => {
     let isCurrent = true;
@@ -318,6 +326,11 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
+    document.documentElement.dataset.theme = resolvedTheme(themePreference);
+  }, [themePreference]);
 
   const activePage = useMemo(() => {
     if (notebook === null || route.kind === "notebook") {
@@ -719,6 +732,14 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     openPage(sectionId, pageId);
   };
 
+  const handlePageRename = (pageId: PageId, title: string) => {
+    if (title.trim().length === 0) {
+      return;
+    }
+
+    updateNotebook((currentNotebook) => renamePage(currentNotebook, pageId, title));
+  };
+
   const handleNotebookOpen = () => {
     window.history.pushState({}, "", "/");
     setRoute({ kind: "notebook" });
@@ -968,27 +989,24 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           onRetry={handleSaveRetry}
           onConflictReload={handleConflictReload}
         />
-        {backupStatus.kind !== "idle" ? (
-          <p
-            className={
-              backupStatus.kind === "failed"
-                ? "notebook-backup__status notebook-backup__status--failed"
-                : "notebook-backup__status"
-            }
-            role={backupStatus.kind === "failed" ? "alert" : "status"}
-          >
-            {backupStatus.message}
-          </p>
-        ) : null}
         <ActivePageView
           activePage={activePage}
           notebook={notebook}
+          backupStatus={backupStatus}
           highlightedCanvasItemId={highlightedCanvasItemId}
+          notebookExportJson={notebookExportJson}
           searchQuery={searchQuery}
           searchResults={searchResults}
+          themePreference={themePreference}
+          onThemePreferenceChange={setThemePreference}
+          onNotebookExport={handleNotebookExport}
+          onNotebookImport={handleNotebookImport}
           onSearchQueryChange={setSearchQuery}
           onSearchResultOpen={handleSearchResultOpen}
           onNotebookOpen={handleNotebookOpen}
+          onPageCreate={handlePageCreate}
+          onPageOpen={handlePageOpen}
+          onPageRename={handlePageRename}
           onCodeBlockAdd={handleCodeBlockAdd}
           onCodeBlockChange={handleCodeBlockChange}
           onDiagramItemAdd={handleDiagramItemAdd}
@@ -1134,12 +1152,21 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           <ActivePageView
             activePage={activePage}
             notebook={notebook}
+            backupStatus={backupStatus}
             highlightedCanvasItemId={highlightedCanvasItemId}
+            notebookExportJson={notebookExportJson}
             searchQuery={searchQuery}
             searchResults={searchResults}
+            themePreference={themePreference}
+            onThemePreferenceChange={setThemePreference}
+            onNotebookExport={handleNotebookExport}
+            onNotebookImport={handleNotebookImport}
             onSearchQueryChange={setSearchQuery}
             onSearchResultOpen={handleSearchResultOpen}
             onNotebookOpen={handleNotebookOpen}
+            onPageCreate={handlePageCreate}
+            onPageOpen={handlePageOpen}
+            onPageRename={handlePageRename}
             onCodeBlockAdd={handleCodeBlockAdd}
             onCodeBlockChange={handleCodeBlockChange}
             onDiagramItemAdd={handleDiagramItemAdd}
@@ -1409,12 +1436,21 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
 interface ActivePageViewProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
+  readonly backupStatus: BackupStatus;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly notebookExportJson: string;
   readonly searchQuery: string;
   readonly searchResults: readonly SearchResult[];
+  readonly themePreference: ThemePreference;
+  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
+  readonly onNotebookExport: () => void;
+  readonly onNotebookImport: (event: ChangeEvent<HTMLInputElement>) => void;
   readonly onSearchQueryChange: (query: string) => void;
   readonly onSearchResultOpen: (result: SearchResult) => void;
   readonly onNotebookOpen: () => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+  readonly onPageRename: (pageId: PageId, title: string) => void;
   readonly onCodeBlockAdd: (
     pageId: PageId,
     code: string,
@@ -1473,12 +1509,21 @@ interface ActivePageViewProps {
 const ActivePageView = ({
   activePage,
   notebook,
+  backupStatus,
   highlightedCanvasItemId,
+  notebookExportJson,
   searchQuery,
   searchResults,
+  themePreference,
+  onThemePreferenceChange,
+  onNotebookExport,
+  onNotebookImport,
   onSearchQueryChange,
   onSearchResultOpen,
   onNotebookOpen,
+  onPageCreate,
+  onPageOpen,
+  onPageRename,
   onCodeBlockAdd,
   onCodeBlockChange,
   onDiagramItemAdd,
@@ -1492,6 +1537,9 @@ const ActivePageView = ({
 }: ActivePageViewProps) => {
   const [inspectedCanvasItemId, setInspectedCanvasItemId] =
     useState<CanvasItemId | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
 
   if (activePage.kind === "invalid-section") {
     return (
@@ -1548,16 +1596,102 @@ const ActivePageView = ({
           </p>
           <p>Page Type: unset</p>
         </div>
-        <button type="button" onClick={onNotebookOpen}>
-          Notebook Management
-        </button>
+        <div className="canvas-actions">
+          <button
+            type="button"
+            aria-expanded={isMenuOpen}
+            aria-controls="canvas-hamburger-menu"
+            onClick={() => setIsMenuOpen((current) => !current)}
+          >
+            Notebook Menu
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsCommandPaletteOpen(true)}
+          >
+            Command Palette
+          </button>
+        </div>
       </header>
-      <DrawingScreenSearch
-        query={searchQuery}
-        results={searchResults}
-        onQueryChange={onSearchQueryChange}
-        onResultOpen={onSearchResultOpen}
-      />
+      {isMenuOpen ? (
+        <CanvasHamburgerMenu
+          activeTheme={themePreference}
+          onClose={() => setIsMenuOpen(false)}
+          onNotebookOpen={onNotebookOpen}
+          onModalOpen={(modal) => {
+            setActiveModal(modal);
+            setIsMenuOpen(false);
+          }}
+          onThemePreferenceChange={onThemePreferenceChange}
+        />
+      ) : null}
+      {isCommandPaletteOpen ? (
+        <CommandPalette
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onCreatePage={() => {
+            onPageCreate(activePage.section.id);
+            setIsCommandPaletteOpen(false);
+          }}
+          onModalOpen={(modal) => {
+            setActiveModal(modal);
+            setIsCommandPaletteOpen(false);
+          }}
+        />
+      ) : null}
+      {activeModal === "search" ? (
+        <CanvasModal title="Search Notebook" onClose={() => setActiveModal(null)}>
+          <DrawingScreenSearch
+            query={searchQuery}
+            results={searchResults}
+            onQueryChange={onSearchQueryChange}
+            onResultOpen={(result) => {
+              onSearchResultOpen(result);
+              setActiveModal(null);
+            }}
+          />
+        </CanvasModal>
+      ) : null}
+      {activeModal === "pages" ? (
+        <CanvasModal title="Page Switcher" onClose={() => setActiveModal(null)}>
+          <PageSwitcher
+            notebook={notebook}
+            currentPageId={activePage.page.id}
+            onCreatePage={() => {
+              onPageCreate(activePage.section.id);
+              setActiveModal(null);
+            }}
+            onPageOpen={(sectionId, pageId) => {
+              onPageOpen(sectionId, pageId);
+              setActiveModal(null);
+            }}
+          />
+        </CanvasModal>
+      ) : null}
+      {activeModal === "backup" ? (
+        <CanvasModal title="Notebook Export and Import" onClose={() => setActiveModal(null)}>
+          <NotebookBackupPanel
+            exportJson={notebookExportJson}
+            status={backupStatus}
+            onExport={onNotebookExport}
+            onImport={onNotebookImport}
+          />
+        </CanvasModal>
+      ) : null}
+      {activeModal === "settings" ? (
+        <CanvasModal title="Notebook Settings" onClose={() => setActiveModal(null)}>
+          <SettingsPanel
+            activePage={activePage.page}
+            themePreference={themePreference}
+            onPageRename={onPageRename}
+            onThemePreferenceChange={onThemePreferenceChange}
+          />
+        </CanvasModal>
+      ) : null}
+      {activeModal === "shortcuts" ? (
+        <CanvasModal title="Shortcuts" onClose={() => setActiveModal(null)}>
+          <ShortcutsPanel />
+        </CanvasModal>
+      ) : null}
       <PageTextCanvas
         page={activePage.page}
         notebook={notebook}
@@ -1605,6 +1739,223 @@ const ActivePageView = ({
     </article>
   );
 };
+
+interface CanvasHamburgerMenuProps {
+  readonly activeTheme: ThemePreference;
+  readonly onClose: () => void;
+  readonly onModalOpen: (modal: CanvasModalKind) => void;
+  readonly onNotebookOpen: () => void;
+  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
+}
+
+const CanvasHamburgerMenu = ({
+  activeTheme,
+  onClose,
+  onModalOpen,
+  onNotebookOpen,
+  onThemePreferenceChange
+}: CanvasHamburgerMenuProps) => (
+  <nav
+    id="canvas-hamburger-menu"
+    className="canvas-hamburger-menu"
+    aria-label="Notebook Menu"
+  >
+    <button type="button" onClick={() => onModalOpen("settings")}>
+      Settings
+    </button>
+    <button
+      type="button"
+      onClick={() => onThemePreferenceChange(nextThemePreference(activeTheme))}
+    >
+      Theme: {themePreferenceLabel(activeTheme)}
+    </button>
+    <button type="button" onClick={() => onModalOpen("backup")}>
+      Notebook Export and Import
+    </button>
+    <button type="button" onClick={() => onModalOpen("shortcuts")}>
+      Shortcuts
+    </button>
+    <button
+      type="button"
+      onClick={() => {
+        onNotebookOpen();
+        onClose();
+      }}
+    >
+      Notebook Management Screen
+    </button>
+    <button type="button" className="remove-button" onClick={onClose}>
+      Close Menu
+    </button>
+  </nav>
+);
+
+interface CommandPaletteProps {
+  readonly onClose: () => void;
+  readonly onCreatePage: () => void;
+  readonly onModalOpen: (modal: CanvasModalKind) => void;
+}
+
+const CommandPalette = ({
+  onClose,
+  onCreatePage,
+  onModalOpen
+}: CommandPaletteProps) => (
+  <CanvasModal title="Command Palette" onClose={onClose}>
+    <div className="command-palette" aria-label="Command Palette actions">
+      <button type="button" onClick={() => onModalOpen("search")}>
+        Search Notebook
+      </button>
+      <button type="button" onClick={() => onModalOpen("pages")}>
+        Switch or create Page
+      </button>
+      <button type="button" onClick={onCreatePage}>
+        Create Page in current Section
+      </button>
+      <button type="button" onClick={() => onModalOpen("settings")}>
+        Rename current Page
+      </button>
+      <button type="button" onClick={() => onModalOpen("backup")}>
+        Notebook Export and Import
+      </button>
+      <button type="button" onClick={() => onModalOpen("settings")}>
+        Settings
+      </button>
+      <button type="button" onClick={() => onModalOpen("shortcuts")}>
+        Shortcuts
+      </button>
+    </div>
+  </CanvasModal>
+);
+
+interface CanvasModalProps {
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly onClose: () => void;
+}
+
+const CanvasModal = ({ title, children, onClose }: CanvasModalProps) => (
+  <div className="canvas-modal-backdrop" role="presentation">
+    <section
+      className="canvas-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`canvas-modal-${idFromLabel(title)}`}
+    >
+      <div className="canvas-modal__header">
+        <div>
+          <p className="eyebrow">Canvas Modal</p>
+          <h3 id={`canvas-modal-${idFromLabel(title)}`}>{title}</h3>
+        </div>
+        <button type="button" onClick={onClose}>
+          Close Modal
+        </button>
+      </div>
+      {children}
+    </section>
+  </div>
+);
+
+interface PageSwitcherProps {
+  readonly notebook: Notebook;
+  readonly currentPageId: PageId;
+  readonly onCreatePage: () => void;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+}
+
+const PageSwitcher = ({
+  notebook,
+  currentPageId,
+  onCreatePage,
+  onPageOpen
+}: PageSwitcherProps) => (
+  <div className="page-switcher">
+    <button type="button" onClick={onCreatePage}>
+      New Page in current Section
+    </button>
+    <ul className="page-list" aria-label="Page Switcher Pages">
+      {notebook.pages.map((page) => {
+        const section = getSection(notebook, page.sectionId);
+
+        return (
+          <li className="page-row" key={page.id}>
+            <div>
+              <strong>{page.title}</strong>
+              <span>
+                {section?.title ?? "Unknown Section"}
+                {page.id === currentPageId ? " - current Page" : ""}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onPageOpen(page.sectionId, page.id)}
+            >
+              Open Page
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+);
+
+interface SettingsPanelProps {
+  readonly activePage: Page;
+  readonly themePreference: ThemePreference;
+  readonly onPageRename: (pageId: PageId, title: string) => void;
+  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
+}
+
+const SettingsPanel = ({
+  activePage,
+  themePreference,
+  onPageRename,
+  onThemePreferenceChange
+}: SettingsPanelProps) => {
+  const [pageTitleDraft, setPageTitleDraft] = useState(activePage.title);
+
+  return (
+    <div className="settings-panel">
+      <label htmlFor="theme-preference">
+        Theme
+        <select
+          id="theme-preference"
+          value={themePreference}
+          onChange={(event) =>
+            onThemePreferenceChange(event.target.value as ThemePreference)
+          }
+        >
+          <option value="system">System with dark fallback</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label htmlFor="active-page-title-setting">
+        Current Page title
+        <input
+          id="active-page-title-setting"
+          value={pageTitleDraft}
+          onChange={(event) => {
+            setPageTitleDraft(event.target.value);
+            onPageRename(activePage.id, event.target.value);
+          }}
+        />
+      </label>
+      <p>
+        Notebook material remains private by default; connected features stay out
+        of the Drawing Screen until explicitly configured.
+      </p>
+    </div>
+  );
+};
+
+const ShortcutsPanel = () => (
+  <div className="shortcuts-panel">
+    <p>Use Command Palette for search, Page switching, creation, settings, and backup.</p>
+    <p>Use the Notebook Menu for settings, theme, Notebook Export, Notebook Import, and shortcuts.</p>
+    <p>Use Text Tool and Draw Tool buttons to switch capture modes on the canvas.</p>
+  </div>
+);
 
 interface DrawingScreenSearchProps {
   readonly query: string;
@@ -2660,6 +3011,70 @@ const pagePath = (sectionId: SectionId, pageId: PageId) =>
 
 const tagsFromDraft = (draft: string): readonly string[] =>
   draft.split(",").map((tag) => tag.trim());
+
+const renamePage = (
+  notebook: Notebook,
+  pageId: PageId,
+  nextTitle: string
+): Notebook => {
+  const title = nextTitle.trim() || "Untitled Page";
+
+  return {
+    ...notebook,
+    pages: notebook.pages.map((page) =>
+      page.id === pageId ? { ...page, title } : page
+    )
+  };
+};
+
+const loadThemePreference = (): ThemePreference => {
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+  if (
+    storedTheme === "system" ||
+    storedTheme === "light" ||
+    storedTheme === "dark"
+  ) {
+    return storedTheme;
+  }
+
+  return "system";
+};
+
+const resolvedTheme = (preference: ThemePreference): "light" | "dark" => {
+  if (preference !== "system") {
+    return preference;
+  }
+
+  if (typeof window.matchMedia !== "function") {
+    return "dark";
+  }
+
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+};
+
+const nextThemePreference = (preference: ThemePreference): ThemePreference => {
+  if (preference === "system") {
+    return "light";
+  }
+
+  if (preference === "light") {
+    return "dark";
+  }
+
+  return "system";
+};
+
+const themePreferenceLabel = (preference: ThemePreference): string => {
+  if (preference === "system") {
+    return "System";
+  }
+
+  return preference === "light" ? "Light" : "Dark";
+};
+
+const idFromLabel = (label: string): string =>
+  label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 const prepareNotebookForDrawingScreen = (
   notebook: Notebook

@@ -62,8 +62,33 @@ describe("App", () => {
   const openNotebookManagement = async (
     user: ReturnType<typeof userEvent.setup>
   ) => {
+    await user.click(await screen.findByRole("button", { name: "Notebook Menu" }));
     await user.click(
-      await screen.findByRole("button", { name: "Notebook Management" })
+      await screen.findByRole("button", { name: "Notebook Management Screen" })
+    );
+  };
+
+  const openCommandPalette = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole("button", { name: "Command Palette" }));
+  };
+
+  const searchNotebook = async (
+    user: ReturnType<typeof userEvent.setup>,
+    query: string
+  ) => {
+    await openCommandPalette(user);
+    await user.click(await screen.findByRole("button", { name: "Search Notebook" }));
+    const searchInput = await screen.findByLabelText(/Search Canvas Items/);
+    await user.clear(searchInput);
+    await user.type(searchInput, query);
+  };
+
+  const openNotebookBackupModal = async (
+    user: ReturnType<typeof userEvent.setup>
+  ) => {
+    await openCommandPalette(user);
+    await user.click(
+      await screen.findByRole("button", { name: "Notebook Export and Import" })
     );
   };
 
@@ -111,6 +136,100 @@ describe("App", () => {
         ])
       })
     );
+  });
+
+  it("keeps secondary actions in the Notebook Menu and Command Palette Canvas Modals", async () => {
+    const user = userEvent.setup();
+    const firstRender = await renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Default Page" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Search Canvas Items/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Notebook Menu" }));
+    expect(screen.getByRole("navigation", { name: "Notebook Menu" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Theme: System" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Notebook Export and Import" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shortcuts" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Theme: System" }));
+    expect(window.localStorage.getItem("interview_prep_notebook:theme")).toBe("light");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Notebook Settings" })
+    ).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Theme"), "dark");
+    expect(window.localStorage.getItem("interview_prep_notebook:theme")).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    await user.clear(screen.getByLabelText("Current Page title"));
+    await user.type(screen.getByLabelText("Current Page title"), "Renamed Page");
+    expect(await screen.findByRole("heading", { name: "Renamed Page" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close Modal" }));
+
+    firstRender.unmount();
+    firstRender.store.close();
+    await renderApp();
+
+    expect(await screen.findByRole("heading", { name: "Renamed Page" })).toBeInTheDocument();
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("invokes search, Page switching, and Page creation from the Command Palette", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+    const research = starterNotebook.sections.find(
+      (section) => section.title === "Research"
+    );
+
+    if (dsa === undefined || research === undefined) {
+      throw new Error("Expected seeded Sections.");
+    }
+
+    const notebookWithPages = addBlankPage(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      research.id,
+      "page_research"
+    );
+
+    await renderApp(notebookWithPages);
+    await screen.findByRole("heading", { name: "Untitled Page" });
+    await openCommandPalette(user);
+
+    expect(
+      await screen.findByRole("dialog", { name: "Command Palette" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search Notebook" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Switch or create Page" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create Page in current Section" })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Switch or create Page" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Page Switcher" })
+    ).toBeInTheDocument();
+    const researchRow = screen.getByText("Research").closest("li");
+
+    if (researchRow === null) {
+      throw new Error("Expected Research Page row.");
+    }
+
+    await user.click(within(researchRow).getByRole("button", { name: "Open Page" }));
+    expect(window.location.pathname).toBe("/sections/section_research/pages/page_research");
+
+    await openCommandPalette(user);
+    await user.click(screen.getByRole("button", { name: "Create Page in current Section" }));
+    expect(window.location.pathname).toMatch(
+      /^\/sections\/section_research\/pages\/page_/
+    );
+
+    await searchNotebook(user, "no matching notes");
+    expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
   });
 
   it("hides Empty Canvas Prompts once the Default Page has a Canvas Item", async () => {
@@ -583,7 +702,7 @@ describe("App", () => {
 
     await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "invariant");
+    await searchNotebook(user, "invariant");
 
     const result = await screen.findByText(
       "Interview Prep Notebook / DSA / Untitled Page"
@@ -639,7 +758,7 @@ describe("App", () => {
       await screen.findByLabelText("Inspector Tags"),
       "arrays, invariant"
     );
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
+    await searchNotebook(user, "arrays");
 
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
     await waitFor(async () => {
@@ -687,7 +806,7 @@ describe("App", () => {
         name: "https://example.com/system-design"
       })
     ).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "cache");
+    await searchNotebook(user, "cache");
 
     expect((await screen.findAllByText("Link Card")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #cache")).toBeInTheDocument();
@@ -750,8 +869,7 @@ describe("App", () => {
       screen.getByLabelText("Inspector Code Block content"),
       "return seen.get(complement);"
     );
-    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "two sum");
+    await searchNotebook(user, "two sum");
 
     expect((await screen.findAllByText("Code Block")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #two sum")).toBeInTheDocument();
@@ -827,8 +945,7 @@ describe("App", () => {
       screen.getByLabelText("Inspector Image Item caption"),
       "Updated failover sketch"
     );
-    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "availability");
+    await searchNotebook(user, "availability");
 
     expect((await screen.findAllByText("Image Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #availability")).toBeInTheDocument();
@@ -902,8 +1019,7 @@ describe("App", () => {
       screen.getByLabelText("Inspector Diagram Item label"),
       "Queue absorbs write spikes"
     );
-    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+    await searchNotebook(user, "backpressure");
 
     expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #backpressure")).toBeInTheDocument();
@@ -979,7 +1095,7 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Use Draw Tool" })).toBeInTheDocument();
     expect(screen.getByText(/not OCR or searchable handwriting/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
+    await searchNotebook(user, "encoded-handwriting-stroke");
 
     expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
     expect(screen.queryByText("Freehand Drawing")).not.toBeInTheDocument();
@@ -1004,7 +1120,7 @@ describe("App", () => {
 
     await renderApp(notebookWithCodeBlock);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "bfs");
+    await searchNotebook(user, "bfs");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
     expect(
@@ -1035,7 +1151,7 @@ describe("App", () => {
 
     await renderApp(notebookWithImage);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+    await searchNotebook(user, "backpressure");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
     expect(
@@ -1113,8 +1229,8 @@ describe("App", () => {
     );
 
     await renderApp();
-    await openNotebookManagement(user);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await openNotebookBackupModal(user);
     await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
 
     const exportJson = await screen.findByLabelText("Notebook Export JSON");
@@ -1133,7 +1249,8 @@ describe("App", () => {
     expect(
       await screen.findByText(/Search uses a freshly rebuilt Local Index/)
     ).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "eviction");
+    await user.click(screen.getByRole("button", { name: "Close Modal" }));
+    await searchNotebook(user, "eviction");
 
     expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
     expect(screen.getByText("Matched Tags: #eviction")).toBeInTheDocument();
