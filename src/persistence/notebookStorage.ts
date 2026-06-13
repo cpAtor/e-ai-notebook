@@ -13,6 +13,7 @@ export const NOTEBOOK_SCHEMA_VERSION = 2;
 export const DEFAULT_NOTEBOOK_DATABASE_NAME = "interview_prep_notebook";
 const NOTEBOOK_RECORD_ID: NotebookId = "notebook_private_interview_prep";
 const NOTEBOOK_EXPORT_FILE_NAME = "interview-prep-notebook-export.json";
+const LEGACY_NOTEBOOK_REVISION = "legacy:notebook-record";
 
 const sectionIdSchema = z.custom<SectionId>(
   (value) => typeof value === "string" && value.startsWith("section_")
@@ -127,7 +128,11 @@ const notebookRecordSchemaV1 = z.object({
 const notebookRecordSchemaV2 = z.object({
   id: z.literal(NOTEBOOK_RECORD_ID),
   schemaVersion: z.literal(NOTEBOOK_SCHEMA_VERSION),
+  revision: z.string().min(1).optional(),
   notebook: notebookSchemaV2
+});
+const versionedNotebookRecordSchemaV2 = notebookRecordSchemaV2.extend({
+  revision: z.string().min(1)
 });
 
 const notebookExportSchemaV1 = z.object({
@@ -143,6 +148,7 @@ const notebookExportSchemaV2 = z.object({
 });
 
 type NotebookRecordV2 = z.infer<typeof notebookRecordSchemaV2>;
+type VersionedNotebookRecord = z.infer<typeof versionedNotebookRecordSchemaV2>;
 export type NotebookExport = z.infer<typeof notebookExportSchemaV2>;
 
 export class NotebookRecoveryError extends Error {
@@ -170,6 +176,15 @@ export class NotebookStorageUnavailableError extends Error {
   }
 }
 
+export class NotebookConflictError extends Error {
+  constructor() {
+    super(
+      "Another tab saved a newer version of this Notebook. This tab stopped autosave before overwriting that newer browser data."
+    );
+    this.name = "NotebookConflictError";
+  }
+}
+
 class NotebookDatabase extends Dexie {
   notebooks!: Table<NotebookRecordV2, NotebookId>;
 
@@ -193,6 +208,7 @@ export const createNotebookStore = (
   databaseName = DEFAULT_NOTEBOOK_DATABASE_NAME
 ): NotebookStore => {
   const database = new NotebookDatabase(databaseName);
+  let lastSeenRevision: string | null = null;
 
   return {
     loadNotebook: async () => {
@@ -203,15 +219,19 @@ export const createNotebookStore = (
 
       if (record === undefined) {
         const notebook = createStarterNotebook();
+        const notebookRecord = toNotebookRecord(notebook);
         await runStorageOperation(
           "starter Notebook creation",
-          () => database.notebooks.put(toNotebookRecord(notebook))
+          () => database.notebooks.put(notebookRecord)
         );
+        lastSeenRevision = notebookRecord.revision;
         return notebook;
       }
 
       try {
-        return parseNotebookRecord(record).notebook;
+        const notebookRecord = parseNotebookRecord(record);
+        lastSeenRevision = notebookRecord.revision;
+        return notebookRecord.notebook;
       } catch (error: unknown) {
         throw new NotebookRecoveryError(error, serializeRawPayload(record));
       }
@@ -225,17 +245,35 @@ export const createNotebookStore = (
       return record === undefined ? null : serializeRawPayload(record);
     },
     saveNotebook: async (notebook) => {
-      await runStorageOperation(
-        "Notebook persistence",
-        () => database.notebooks.put(toNotebookRecord(notebook))
+      const nextRecord = await runStorageOperation("Notebook persistence", async () =>
+        database.transaction("rw", database.notebooks, async () => {
+          const currentRecord = await database.notebooks.get(NOTEBOOK_RECORD_ID);
+          const currentRevision =
+            currentRecord === undefined ? null : parseNotebookRecord(currentRecord).revision;
+
+          if (
+            lastSeenRevision !== null &&
+            currentRevision !== null &&
+            currentRevision !== lastSeenRevision
+          ) {
+            throw new NotebookConflictError();
+          }
+
+          const record = toNotebookRecord(notebook);
+          await database.notebooks.put(record);
+          return record;
+        })
       );
+      lastSeenRevision = nextRecord.revision;
     },
     startFreshNotebook: async () => {
       const notebook = createStarterNotebook();
+      const notebookRecord = toNotebookRecord(notebook);
       await runStorageOperation(
         "fresh Notebook creation",
-        () => database.notebooks.put(toNotebookRecord(notebook))
+        () => database.notebooks.put(notebookRecord)
       );
+      lastSeenRevision = notebookRecord.revision;
       return notebook;
     },
     close: () => {
@@ -283,7 +321,7 @@ export const parseNotebookExport = (rawExport: string): Notebook => {
 
 export const notebookExportFileName = (): string => NOTEBOOK_EXPORT_FILE_NAME;
 
-const parseNotebookRecord = (record: unknown): NotebookRecordV2 => {
+const parseNotebookRecord = (record: unknown): VersionedNotebookRecord => {
   const versionedRecord = z
     .object({ schemaVersion: z.union([z.literal(1), z.literal(2)]) })
     .passthrough()
@@ -295,7 +333,12 @@ const parseNotebookRecord = (record: unknown): NotebookRecordV2 => {
     return toNotebookRecord(migrateNotebookV1ToCurrent(v1Record.notebook));
   }
 
-  return notebookRecordSchemaV2.parse(record);
+  const parsedRecord = notebookRecordSchemaV2.parse(record);
+
+  return {
+    ...parsedRecord,
+    revision: parsedRecord.revision ?? LEGACY_NOTEBOOK_REVISION
+  };
 };
 
 const migrateNotebookV1ToCurrent = (
@@ -306,12 +349,16 @@ const migrateNotebookV1ToCurrent = (
   canvasRegions: []
 });
 
-const toNotebookRecord = (notebook: Notebook): NotebookRecordV2 =>
-  notebookRecordSchemaV2.parse({
+const toNotebookRecord = (notebook: Notebook): VersionedNotebookRecord =>
+  versionedNotebookRecordSchemaV2.parse({
     id: NOTEBOOK_RECORD_ID,
     schemaVersion: NOTEBOOK_SCHEMA_VERSION,
+    revision: createNotebookRevision(),
     notebook
   });
+
+const createNotebookRevision = (): string =>
+  `notebook-revision:${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
 
 const serializeRawPayload = (payload: unknown): string => JSON.stringify(payload, null, 2);
 
@@ -322,6 +369,10 @@ const runStorageOperation = async <Result>(
   try {
     return await run();
   } catch (error: unknown) {
+    if (error instanceof NotebookConflictError) {
+      throw error;
+    }
+
     throw new NotebookStorageUnavailableError(operation, error);
   }
 };

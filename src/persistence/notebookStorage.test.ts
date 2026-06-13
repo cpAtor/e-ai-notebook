@@ -6,6 +6,7 @@ import {
   addImageCanvasItem,
   addBlankPage,
   addLinkCardCanvasItem,
+  addSection,
   createStarterNotebook,
   replacePageCanvasItems,
   replacePageTextCanvasItems
@@ -15,6 +16,7 @@ import {
   createNotebookExport,
   createNotebookStore,
   deleteNotebookDatabase,
+  NotebookConflictError,
   NotebookRecoveryError,
   parseNotebookExport,
   notebookSchemaV1,
@@ -46,6 +48,34 @@ describe("Notebook storage", () => {
 
     await expect(reloadedStore.loadNotebook()).resolves.toEqual(notebookWithPage);
     reloadedStore.close();
+  });
+
+  it("rejects stale saves after another store writes a newer Notebook revision", async () => {
+    const firstTabStore = createNotebookStore(databaseName);
+    const firstTabNotebook = await firstTabStore.loadNotebook();
+    const secondTabStore = createNotebookStore(databaseName);
+    const secondTabNotebook = await secondTabStore.loadNotebook();
+    const externallySavedNotebook = addSection(
+      secondTabNotebook,
+      "section_external",
+      "External prep"
+    );
+    const staleNotebook = addSection(
+      firstTabNotebook,
+      "section_stale",
+      "Stale prep"
+    );
+
+    await secondTabStore.saveNotebook(externallySavedNotebook);
+
+    await expect(firstTabStore.saveNotebook(staleNotebook)).rejects.toBeInstanceOf(
+      NotebookConflictError
+    );
+    await expect(firstTabStore.loadNotebook()).resolves.toEqual(
+      externallySavedNotebook
+    );
+    firstTabStore.close();
+    secondTabStore.close();
   });
 
   it("keeps the first persisted schema strict and versionable", () => {

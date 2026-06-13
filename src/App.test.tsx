@@ -16,6 +16,7 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  NotebookConflictError,
   NotebookRecoveryError,
   NotebookStorageUnavailableError,
   serializeNotebookExport,
@@ -143,6 +144,48 @@ describe("App", () => {
     render(<App store={failingStore} />);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
+  });
+
+  it("pauses autosave and reloads stored data when another tab changed the Notebook", async () => {
+    const user = userEvent.setup();
+    const firstLoadedNotebook = createStarterNotebook();
+    const externallySavedNotebook = addSection(
+      firstLoadedNotebook,
+      "section_external",
+      "External prep"
+    );
+    let loadCount = 0;
+    const conflictStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => {
+        loadCount += 1;
+        return loadCount === 1 ? firstLoadedNotebook : externallySavedNotebook;
+      }),
+      saveNotebook: vi.fn(async () => {
+        throw new NotebookConflictError();
+      }),
+      loadRawNotebookPayload: vi.fn(async () => JSON.stringify(externallySavedNotebook)),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={conflictStore} />);
+
+    await screen.findByDisplayValue("DSA");
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Another tab changed this Notebook"
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Autosave is paused in this tab/i
+    );
+    expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reload Stored Notebook" }));
+
+    expect(await screen.findByDisplayValue("External prep")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Behavioral")).not.toBeInTheDocument();
   });
 
   it("shows unsupported storage when the Notebook cannot load from IndexedDB", async () => {

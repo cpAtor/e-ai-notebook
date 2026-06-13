@@ -60,6 +60,7 @@ import {
 } from "./domain/notebook";
 import {
   createNotebookStore,
+  NotebookConflictError,
   NotebookRecoveryError,
   NotebookStorageUnavailableError,
   notebookExportFileName,
@@ -153,7 +154,8 @@ type SaveStatus =
       readonly kind: "failed";
       readonly message: string;
       readonly unsavedNotebook: Notebook;
-    };
+    }
+  | { readonly kind: "conflict"; readonly message: string };
 
 type BackupStatus =
   | { readonly kind: "idle" }
@@ -286,6 +288,14 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
       })
       .catch((error: unknown) => {
         if (saveAttemptRef.current === saveAttempt) {
+          if (error instanceof NotebookConflictError) {
+            setSaveStatus({
+              kind: "conflict",
+              message: error.message
+            });
+            return;
+          }
+
           if (error instanceof NotebookStorageUnavailableError) {
             setNotebook(null);
             setRecoveryState(null);
@@ -313,6 +323,64 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     if (saveStatus.kind === "failed") {
       saveNotebook(saveStatus.unsavedNotebook);
     }
+  };
+
+  const handleConflictReload = () => {
+    void (async () => {
+      try {
+        const storedNotebook = await store.loadNotebook();
+        setNotebook(storedNotebook);
+        setLoadError(null);
+        setRecoveryState(null);
+        setSaveStatus({ kind: "saved" });
+        setBackupStatus({ kind: "idle" });
+        setSearchQuery("");
+        setHighlightedCanvasItemId(null);
+      } catch (error: unknown) {
+        if (error instanceof NotebookRecoveryError) {
+          setRecoveryState({
+            message: error.message,
+            rawPayload: error.rawPayload,
+            rawExportJson: "",
+            status: { kind: "idle" }
+          });
+          setLoadError(null);
+          setSaveStatus({ kind: "idle" });
+          return;
+        }
+
+        if (error instanceof NotebookStorageUnavailableError) {
+          setNotebook(null);
+          setRecoveryState(null);
+          setSaveStatus({ kind: "idle" });
+          setLoadError({
+            kind: "unsupported-storage",
+            message: unsupportedStorageMessage(error)
+          });
+          return;
+        }
+
+        if (notebook === null) {
+          setLoadError({
+            kind: "generic",
+            message:
+              error instanceof Error
+                ? error.message
+                : "The newer stored Notebook could not be loaded."
+          });
+          return;
+        }
+
+        setSaveStatus({
+          kind: "failed",
+          message:
+            error instanceof Error
+              ? error.message
+              : "The newer stored Notebook could not be loaded.",
+          unsavedNotebook: notebook
+        });
+      }
+    })();
   };
 
   const handleNotebookExport = () => {
@@ -707,6 +775,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
       return;
     }
 
+    if (saveStatus.kind === "conflict") {
+      return;
+    }
+
     saveNotebook(updater(notebook));
   };
 
@@ -792,7 +864,11 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         </div>
       </section>
 
-      <SaveStatusBanner status={saveStatus} onRetry={handleSaveRetry} />
+      <SaveStatusBanner
+        status={saveStatus}
+        onRetry={handleSaveRetry}
+        onConflictReload={handleConflictReload}
+      />
 
       <NotebookBackupPanel
         exportJson={notebookExportJson}
@@ -1047,9 +1123,14 @@ const NotebookBackupPanel = ({
 interface SaveStatusBannerProps {
   readonly status: SaveStatus;
   readonly onRetry: () => void;
+  readonly onConflictReload: () => void;
 }
 
-const SaveStatusBanner = ({ status, onRetry }: SaveStatusBannerProps) => {
+const SaveStatusBanner = ({
+  status,
+  onRetry,
+  onConflictReload
+}: SaveStatusBannerProps) => {
   if (status.kind === "idle") {
     return null;
   }
@@ -1071,6 +1152,28 @@ const SaveStatusBanner = ({ status, onRetry }: SaveStatusBannerProps) => {
         </div>
         <button type="button" onClick={onRetry}>
           Retry Save
+        </button>
+      </section>
+    );
+  }
+
+  if (status.kind === "conflict") {
+    return (
+      <section
+        className="save-status save-status--failed"
+        aria-label="Autosave status"
+        role="alert"
+      >
+        <div>
+          <strong>Another tab changed this Notebook</strong>
+          <p>
+            Autosave is paused in this tab so it cannot silently overwrite newer
+            browser data. Reload the stored Notebook before making more edits.
+          </p>
+          <p>{status.message}</p>
+        </div>
+        <button type="button" onClick={onConflictReload}>
+          Reload Stored Notebook
         </button>
       </section>
     );
