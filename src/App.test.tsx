@@ -33,6 +33,7 @@ describe("App", () => {
     databaseSequence += 1;
     databaseName = `app-test-${databaseSequence}`;
     window.history.replaceState({}, "", "/");
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -73,6 +74,82 @@ describe("App", () => {
     expect(screen.getByDisplayValue("DSA")).toBeInTheDocument();
     expect(screen.getByDisplayValue("System Design")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Research")).toBeInTheDocument();
+  });
+
+  it("opens a fresh Notebook directly on an Inbox Default Page Drawing Screen", async () => {
+    const { store } = await renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Default Page" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    await expect(store.loadNotebook()).resolves.toEqual(
+      expect.objectContaining({
+        sections: expect.arrayContaining([
+          expect.objectContaining({ id: "section_inbox", title: "Inbox" })
+        ]),
+        pages: expect.arrayContaining([
+          expect.objectContaining({
+            id: "page_default",
+            sectionId: "section_inbox",
+            title: "Default Page",
+            pageType: null
+          })
+        ])
+      })
+    );
+  });
+
+  it("opens the last opened Page for a returning Notebook when it still exists", async () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+    const research = starterNotebook.sections.find(
+      (section) => section.title === "Research"
+    );
+
+    if (dsa === undefined || research === undefined) {
+      throw new Error("Expected seeded Sections.");
+    }
+
+    const notebookWithPages = addBlankPage(
+      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
+      research.id,
+      "page_research"
+    );
+    window.localStorage.setItem(
+      "interview_prep_notebook:last_opened_page",
+      JSON.stringify({ sectionId: research.id, pageId: "page_research" })
+    );
+
+    await renderApp(notebookWithPages);
+
+    expect(
+      await screen.findByRole("heading", { name: "Untitled Page" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Research")).toBeInTheDocument();
+  });
+
+  it("falls back to the first existing Page when the remembered Page is gone", async () => {
+    const starterNotebook = createStarterNotebook();
+    const dsa = starterNotebook.sections[0];
+
+    if (dsa === undefined) {
+      throw new Error("Expected seeded DSA Section.");
+    }
+
+    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    window.localStorage.setItem(
+      "interview_prep_notebook:last_opened_page",
+      JSON.stringify({ sectionId: "section_missing", pageId: "page_missing" })
+    );
+
+    await renderApp(notebookWithPage);
+
+    expect(
+      await screen.findByRole("heading", { name: "Untitled Page" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("DSA")).toBeInTheDocument();
   });
 
   it("renames, adds, and removes Sections", async () => {
@@ -171,8 +248,6 @@ describe("App", () => {
     render(<App store={conflictStore} />);
 
     await screen.findByDisplayValue("DSA");
-    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
-    await user.click(screen.getByRole("button", { name: "Add Section" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Another tab changed this Notebook"
@@ -185,7 +260,6 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Reload Stored Notebook" }));
 
     expect(await screen.findByDisplayValue("External prep")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Behavioral")).not.toBeInTheDocument();
   });
 
   it("shows unsupported storage when the Notebook cannot load from IndexedDB", async () => {
@@ -218,7 +292,6 @@ describe("App", () => {
   });
 
   it("enters unsupported storage instead of claiming autosave after a first persistence failure", async () => {
-    const user = userEvent.setup();
     const unavailableStore: NotebookStore = {
       loadNotebook: vi.fn(async () => createStarterNotebook()),
       saveNotebook: vi.fn(async () => {
@@ -233,10 +306,6 @@ describe("App", () => {
     };
 
     render(<App store={unavailableStore} />);
-
-    await screen.findByDisplayValue("DSA");
-    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
-    await user.click(screen.getByRole("button", { name: "Add Section" }));
 
     expect(
       await screen.findByRole("heading", {
@@ -318,7 +387,21 @@ describe("App", () => {
     );
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
-    expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(importedNotebook);
+    expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sections: expect.arrayContaining([
+          expect.objectContaining({ id: "section_inbox", title: "Inbox" }),
+          expect.objectContaining({ id: "section_behavioral", title: "Behavioral" })
+        ]),
+        pages: expect.arrayContaining([
+          expect.objectContaining({
+            id: "page_default",
+            sectionId: "section_inbox",
+            title: "Default Page"
+          })
+        ])
+      })
+    );
   });
 
   it("makes no default runtime fetch calls", async () => {
@@ -446,7 +529,7 @@ describe("App", () => {
     );
 
     expect(result).toBeInTheDocument();
-    expect(screen.getByText(/Binary search invariant/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Binary search invariant/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
     expect(window.location.pathname).toBe("/sections/section_dsa/pages/page_dsa");
@@ -488,12 +571,10 @@ describe("App", () => {
 
     const { store } = await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(screen.getByRole("button", { name: "Open Page" }));
     await user.type(
       await screen.findByLabelText("Tags for Binary search invariant"),
       "arrays, invariant"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
 
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
@@ -820,12 +901,10 @@ describe("App", () => {
 
     await renderApp(notebookWithDrawing);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(screen.getByRole("button", { name: "Open Page" }));
 
     expect(await screen.findByRole("button", { name: "Use Draw Tool" })).toBeInTheDocument();
     expect(screen.getByText(/not OCR or searchable handwriting/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
 
     expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();

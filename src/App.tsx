@@ -70,6 +70,9 @@ import {
 } from "./persistence/notebookStorage";
 
 const DEFAULT_NEW_SECTION_TITLE = "New Section";
+const DEFAULT_SECTION_ID: SectionId = "section_inbox";
+const DEFAULT_PAGE_ID: PageId = "page_default";
+const LAST_OPENED_PAGE_STORAGE_KEY = "interview_prep_notebook:last_opened_page";
 const defaultNotebookStore = createNotebookStore();
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   fonts: {
@@ -132,6 +135,7 @@ type PageRoute =
       readonly sectionId: SectionId;
       readonly pageId: PageId;
     };
+type OpenPageRoute = Extract<PageRoute, { readonly kind: "page" }>;
 
 type ActivePage =
   | {
@@ -187,6 +191,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
   );
+  const initialRouteRef = useRef(route);
   const [sectionTitleDrafts, setSectionTitleDrafts] = useState<
     Partial<Record<SectionId, string>>
   >({});
@@ -200,12 +205,66 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     store
       .loadNotebook()
-      .then((storedNotebook) => {
+      .then(async (storedNotebook) => {
         if (isCurrent) {
-          setNotebook(storedNotebook);
+          const preparedNotebook = prepareNotebookForDrawingScreen(storedNotebook);
+          const initialRoute = initialRouteForNotebook(
+            preparedNotebook.notebook,
+            initialRouteRef.current
+          );
+
+          setNotebook(preparedNotebook.notebook);
           setLoadError(null);
           setRecoveryState(null);
-          setSaveStatus({ kind: "saved" });
+          setRoute(initialRoute);
+          rememberLastOpenedPage(initialRoute);
+
+          if (!preparedNotebook.changed) {
+            setSaveStatus({ kind: "saved" });
+            return;
+          }
+
+          setSaveStatus({ kind: "saving" });
+
+          try {
+            await store.saveNotebook(preparedNotebook.notebook);
+
+            if (isCurrent) {
+              setSaveStatus({ kind: "saved" });
+            }
+          } catch (error: unknown) {
+            if (!isCurrent) {
+              return;
+            }
+
+            if (error instanceof NotebookConflictError) {
+              setSaveStatus({
+                kind: "conflict",
+                message: error.message
+              });
+              return;
+            }
+
+            if (error instanceof NotebookStorageUnavailableError) {
+              setNotebook(null);
+              setRecoveryState(null);
+              setSaveStatus({ kind: "idle" });
+              setLoadError({
+                kind: "unsupported-storage",
+                message: unsupportedStorageMessage(error)
+              });
+              return;
+            }
+
+            setSaveStatus({
+              kind: "failed",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Notebook changes could not be saved.",
+              unsavedNotebook: preparedNotebook.notebook
+            });
+          }
         }
       })
       .catch((error: unknown) => {
@@ -329,13 +388,60 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     void (async () => {
       try {
         const storedNotebook = await store.loadNotebook();
-        setNotebook(storedNotebook);
+        const preparedNotebook = prepareNotebookForDrawingScreen(storedNotebook);
+        const initialRoute = initialRouteForNotebook(
+          preparedNotebook.notebook,
+          route
+        );
+
+        setNotebook(preparedNotebook.notebook);
         setLoadError(null);
         setRecoveryState(null);
-        setSaveStatus({ kind: "saved" });
         setBackupStatus({ kind: "idle" });
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
+        setRoute(initialRoute);
+        rememberLastOpenedPage(initialRoute);
+
+        if (!preparedNotebook.changed) {
+          setSaveStatus({ kind: "saved" });
+          return;
+        }
+
+        setSaveStatus({ kind: "saving" });
+
+        try {
+          await store.saveNotebook(preparedNotebook.notebook);
+          setSaveStatus({ kind: "saved" });
+        } catch (error: unknown) {
+          if (error instanceof NotebookConflictError) {
+            setSaveStatus({
+              kind: "conflict",
+              message: error.message
+            });
+            return;
+          }
+
+          if (error instanceof NotebookStorageUnavailableError) {
+            setNotebook(null);
+            setRecoveryState(null);
+            setSaveStatus({ kind: "idle" });
+            setLoadError({
+              kind: "unsupported-storage",
+              message: unsupportedStorageMessage(error)
+            });
+            return;
+          }
+
+          setSaveStatus({
+            kind: "failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Notebook changes could not be saved.",
+            unsavedNotebook: preparedNotebook.notebook
+          });
+        }
       } catch (error: unknown) {
         if (error instanceof NotebookRecoveryError) {
           setRecoveryState({
@@ -427,15 +533,20 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           throw new Error("Notebook Export file could not be read as text.");
         }
 
-        const importedNotebook = parseNotebookExport(reader.result);
+        const importedNotebook = prepareNotebookForDrawingScreen(
+          parseNotebookExport(reader.result)
+        ).notebook;
+        const initialRoute = initialRouteForNotebook(importedNotebook, {
+          kind: "notebook"
+        });
         await store.saveNotebook(importedNotebook);
         setNotebook(importedNotebook);
         setSaveStatus({ kind: "saved" });
         setNotebookExportJson("");
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
-        window.history.pushState({}, "", "/");
-        setRoute({ kind: "notebook" });
+        setRoute(initialRoute);
+        rememberLastOpenedPage(initialRoute);
         setRecoveryState(null);
         setStatus({
           kind: "success",
@@ -496,15 +607,22 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const handleRecoveryStartFresh = () => {
     void (async () => {
       try {
-        const freshNotebook = await store.startFreshNotebook();
+        const freshNotebook = prepareNotebookForDrawingScreen(
+          await store.startFreshNotebook()
+        ).notebook;
+        const initialRoute = initialRouteForNotebook(freshNotebook, {
+          kind: "notebook"
+        });
+
+        await store.saveNotebook(freshNotebook);
         setNotebook(freshNotebook);
         setLoadError(null);
         setRecoveryState(null);
         setSaveStatus({ kind: "saved" });
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
-        window.history.pushState({}, "", "/");
-        setRoute({ kind: "notebook" });
+        setRoute(initialRoute);
+        rememberLastOpenedPage(initialRoute);
         setBackupStatus({
           kind: "success",
           message:
@@ -600,9 +718,13 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handleNotebookOpen = () => {
-    window.history.pushState({}, "", "/");
+    if (notebook !== null) {
+      const initialRoute = initialRouteForNotebook(notebook, { kind: "notebook" });
+      setRoute(initialRoute);
+      rememberLastOpenedPage(initialRoute);
+    }
+
     setHighlightedCanvasItemId(null);
-    setRoute({ kind: "notebook" });
   };
 
   const handleSearchResultOpen = (result: SearchResult) => {
@@ -785,7 +907,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const openPage = (sectionId: SectionId, pageId: PageId) => {
     const path = pagePath(sectionId, pageId);
     window.history.pushState({}, "", path);
-    setRoute({ kind: "page", sectionId, pageId });
+    const nextRoute: PageRoute = { kind: "page", sectionId, pageId };
+    setRoute(nextRoute);
+    rememberLastOpenedPage(nextRoute);
   };
 
   if (recoveryState !== null) {
@@ -2359,6 +2483,138 @@ const pagePath = (sectionId: SectionId, pageId: PageId) =>
 
 const tagsFromDraft = (draft: string): readonly string[] =>
   draft.split(",").map((tag) => tag.trim());
+
+const prepareNotebookForDrawingScreen = (
+  notebook: Notebook
+): { readonly notebook: Notebook; readonly changed: boolean } => {
+  const hasDefaultSection = notebook.sections.some(
+    (section) => section.id === DEFAULT_SECTION_ID
+  );
+  const sections = hasDefaultSection
+    ? notebook.sections
+    : [
+        { id: DEFAULT_SECTION_ID, title: "Inbox" },
+        ...notebook.sections
+      ];
+  const hasOpenablePage = notebook.pages.some((page) =>
+    sections.some((section) => section.id === page.sectionId)
+  );
+  const pages = hasOpenablePage
+    ? notebook.pages
+    : [
+        ...notebook.pages,
+        {
+          id: DEFAULT_PAGE_ID,
+          sectionId: DEFAULT_SECTION_ID,
+          title: "Default Page",
+          pageType: null
+        }
+      ];
+
+  if (hasDefaultSection && hasOpenablePage) {
+    return { notebook, changed: false };
+  }
+
+  return {
+    notebook: {
+      ...notebook,
+      sections,
+      pages
+    },
+    changed: true
+  };
+};
+
+const initialRouteForNotebook = (
+  notebook: Notebook,
+  requestedRoute: PageRoute
+): PageRoute => {
+  if (requestedRoute.kind === "page") {
+    return requestedRoute;
+  }
+
+  const rememberedRoute = readLastOpenedPageRoute();
+
+  if (
+    rememberedRoute !== null &&
+    resolveActivePage(
+      notebook,
+      rememberedRoute.sectionId,
+      rememberedRoute.pageId
+    ).kind === "found"
+  ) {
+    return rememberedRoute;
+  }
+
+  const firstOpenablePage = notebook.pages.find((page) =>
+    notebook.sections.some((section) => section.id === page.sectionId)
+  );
+
+  if (firstOpenablePage !== undefined) {
+    return {
+      kind: "page",
+      sectionId: firstOpenablePage.sectionId,
+      pageId: firstOpenablePage.id
+    };
+  }
+
+  return { kind: "notebook" };
+};
+
+const readLastOpenedPageRoute = (): OpenPageRoute | null => {
+  const rawRoute = window.localStorage.getItem(LAST_OPENED_PAGE_STORAGE_KEY);
+
+  if (rawRoute === null) {
+    return null;
+  }
+
+  let parsedRoute: unknown;
+
+  try {
+    parsedRoute = JSON.parse(rawRoute) as unknown;
+  } catch {
+    window.localStorage.removeItem(LAST_OPENED_PAGE_STORAGE_KEY);
+    return null;
+  }
+
+  if (
+    typeof parsedRoute !== "object" ||
+    parsedRoute === null ||
+    !("sectionId" in parsedRoute) ||
+    !("pageId" in parsedRoute)
+  ) {
+    return null;
+  }
+
+  const sectionId = parsedRoute.sectionId;
+  const pageId = parsedRoute.pageId;
+
+  if (
+    typeof sectionId !== "string" ||
+    typeof pageId !== "string" ||
+    !sectionId.startsWith("section_") ||
+    !pageId.startsWith("page_")
+  ) {
+    return null;
+  }
+
+  return {
+    kind: "page",
+    sectionId: sectionId as SectionId,
+    pageId: pageId as PageId
+  };
+};
+
+const rememberLastOpenedPage = (route: PageRoute) => {
+  if (route.kind !== "page") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    LAST_OPENED_PAGE_STORAGE_KEY,
+    JSON.stringify({ sectionId: route.sectionId, pageId: route.pageId })
+  );
+};
 
 const diagramKindLabel = (kind: DiagramItemKind): string => {
   if (kind === "sticky-note") {
