@@ -125,6 +125,29 @@ input:focus {
   padding: clamp(1rem, 3vw, 2rem);
 }
 
+.save-status {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: #e6f6d9;
+  color: #275719;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+}
+
+.save-status p {
+  margin: 0.35rem 0 0;
+}
+
+.save-status--failed {
+  border-color: #e8bdb5;
+  background: #fff0ed;
+  color: #743126;
+}
+
 .section-card h2 {
   font-size: clamp(1.65rem, 3vw, 2.4rem);
   letter-spacing: -0.04em;

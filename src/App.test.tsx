@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -80,6 +80,50 @@ describe("App", () => {
     expect(screen.getByDisplayValue("Algorithms")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Behavioral")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("Research")).not.toBeInTheDocument();
+  });
+
+  it("keeps failed autosaves sticky and retries the visible unsaved Notebook", async () => {
+    const user = userEvent.setup();
+    let persistedNotebook = createStarterNotebook();
+    let rejectSaves = true;
+    const failingStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => persistedNotebook),
+      saveNotebook: vi.fn(async (nextNotebook) => {
+        if (rejectSaves) {
+          throw new Error("IndexedDB write failed.");
+        }
+
+        persistedNotebook = nextNotebook;
+      }),
+      close: vi.fn()
+    };
+
+    const view = render(<App store={failingStore} />);
+
+    await screen.findByDisplayValue("DSA");
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Autosave failed");
+    expect(screen.getByDisplayValue("Behavioral")).toBeInTheDocument();
+    expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
+
+    rejectSaves = false;
+    await user.click(screen.getByRole("button", { name: "Retry Save" }));
+
+    expect(
+      await screen.findByText("Notebook changes saved")
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        persistedNotebook.sections.some((section) => section.title === "Behavioral")
+      ).toBe(true)
+    );
+
+    view.unmount();
+    render(<App store={failingStore} />);
+
+    expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
   });
 
   it("makes no default runtime fetch calls", async () => {

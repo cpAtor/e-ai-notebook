@@ -71,9 +71,21 @@ type TldrawEditor = Parameters<
   NonNullable<ComponentProps<typeof Tldraw>["onMount"]>
 >[0];
 
+type SaveStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "saving" }
+  | { readonly kind: "saved" }
+  | {
+      readonly kind: "failed";
+      readonly message: string;
+      readonly unsavedNotebook: Notebook;
+    };
+
 export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
+  const saveAttemptRef = useRef(0);
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
   );
@@ -94,6 +106,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         if (isCurrent) {
           setNotebook(storedNotebook);
           setLoadError(null);
+          setSaveStatus({ kind: "saved" });
         }
       })
       .catch((error: unknown) => {
@@ -138,12 +151,35 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   );
 
   const saveNotebook = (nextNotebook: Notebook) => {
+    const saveAttempt = saveAttemptRef.current + 1;
+    saveAttemptRef.current = saveAttempt;
     setNotebook(nextNotebook);
-    store.saveNotebook(nextNotebook).catch((error: unknown) => {
-      setLoadError(
-        error instanceof Error ? error.message : "Notebook changes could not be saved."
-      );
-    });
+    setSaveStatus({ kind: "saving" });
+    store
+      .saveNotebook(nextNotebook)
+      .then(() => {
+        if (saveAttemptRef.current === saveAttempt) {
+          setSaveStatus({ kind: "saved" });
+        }
+      })
+      .catch((error: unknown) => {
+        if (saveAttemptRef.current === saveAttempt) {
+          setSaveStatus({
+            kind: "failed",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Notebook changes could not be saved.",
+            unsavedNotebook: nextNotebook
+          });
+        }
+      });
+  };
+
+  const handleSaveRetry = () => {
+    if (saveStatus.kind === "failed") {
+      saveNotebook(saveStatus.unsavedNotebook);
+    }
   };
 
   const handleSectionRename = (sectionId: SectionId, title: string) => {
@@ -275,6 +311,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         </div>
       </section>
 
+      <SaveStatusBanner status={saveStatus} onRetry={handleSaveRetry} />
+
       <section className="section-card" aria-labelledby="sections-title">
         <div className="section-card__header">
           <div>
@@ -368,6 +406,52 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         )}
       </section>
     </main>
+  );
+};
+
+interface SaveStatusBannerProps {
+  readonly status: SaveStatus;
+  readonly onRetry: () => void;
+}
+
+const SaveStatusBanner = ({ status, onRetry }: SaveStatusBannerProps) => {
+  if (status.kind === "idle") {
+    return null;
+  }
+
+  if (status.kind === "failed") {
+    return (
+      <section
+        className="save-status save-status--failed"
+        aria-label="Autosave status"
+        role="alert"
+      >
+        <div>
+          <strong>Autosave failed</strong>
+          <p>
+            Your latest Notebook edits are still visible here, but they have not
+            been written to browser storage yet. Retry before closing this tab.
+          </p>
+          <p>{status.message}</p>
+        </div>
+        <button type="button" onClick={onRetry}>
+          Retry Save
+        </button>
+      </section>
+    );
+  }
+
+  const message =
+    status.kind === "saving" ? "Saving Notebook changes" : "Notebook changes saved";
+
+  return (
+    <section
+      className="save-status"
+      aria-label="Autosave status"
+      aria-live="polite"
+    >
+      <strong>{message}</strong>
+    </section>
   );
 };
 
