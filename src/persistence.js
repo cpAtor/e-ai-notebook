@@ -60,5 +60,5 @@ function requestToPromise(request) {
 }
 
 function clone(value) {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
+  return value == null ? value : structuredClone(value);
 }
