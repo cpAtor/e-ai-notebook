@@ -106,6 +106,7 @@ describe("App", () => {
     ).toHaveTextContent(
       /Stored in local browser storage by default\.\s*Your Notebook stays in this browser unless you export it or configure a connected feature\. Browser storage is not server-grade encrypted storage, so use Notebook Export for backups rather than expecting cloud sync\./
     );
+    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("DSA")).toBeInTheDocument();
     expect(screen.getByDisplayValue("System Design")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Research")).toBeInTheDocument();
@@ -416,7 +417,9 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Autosave failed");
+    const failureToast = await screen.findByRole("alert");
+    expect(failureToast).toHaveClass("canvas-toast");
+    expect(failureToast).toHaveTextContent("Autosave failed");
     expect(screen.getByDisplayValue("Behavioral")).toBeInTheDocument();
     expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
 
@@ -437,6 +440,45 @@ describe("App", () => {
     await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
+  });
+
+  it("keeps quick saves quiet but shows slow autosave Canvas Toasts", async () => {
+    const user = userEvent.setup();
+    let persistedNotebook = createStarterNotebook();
+    let resolveSave: (() => void) | undefined;
+    const slowStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => persistedNotebook),
+      saveNotebook: vi.fn(
+        (nextNotebook) =>
+          new Promise<void>((resolve) => {
+            persistedNotebook = nextNotebook;
+            resolveSave = resolve;
+          })
+      ),
+      loadRawNotebookPayload: vi.fn(async () => JSON.stringify(persistedNotebook)),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={slowStore} />);
+    await openNotebookManagement(user);
+
+    await screen.findByDisplayValue("DSA");
+    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
+
+    await waitFor(
+      () =>
+        expect(screen.getByText("Saving Notebook changes")).toBeInTheDocument(),
+      { timeout: 1500 }
+    );
+    expect(screen.getByLabelText("Autosave status")).toHaveClass("canvas-toast");
+
+    resolveSave?.();
+
+    expect(await screen.findByText("Notebook changes saved")).toBeInTheDocument();
   });
 
   it("pauses autosave and reloads stored data when another tab changed the Notebook", async () => {
@@ -466,12 +508,12 @@ describe("App", () => {
 
     await screen.findByDisplayValue("DSA");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    const conflictToast = await screen.findByRole("alert");
+    expect(conflictToast).toHaveClass("canvas-toast");
+    expect(conflictToast).toHaveTextContent(
       "Another tab changed this Notebook"
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /Autosave is paused in this tab/i
-    );
+    expect(conflictToast).toHaveTextContent(/Autosave is paused in this tab/i);
     expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Reload Stored Notebook" }));
@@ -1276,6 +1318,9 @@ describe("App", () => {
 
     const exportJson = await screen.findByLabelText("Notebook Export JSON");
     const exportJsonValue = (exportJson as HTMLTextAreaElement).value;
+    expect(await screen.findByLabelText("Notebook Export Canvas Toast")).toHaveClass(
+      "canvas-toast"
+    );
 
     expect(exportJsonValue).toContain('"canvasItems": []');
     expect(exportJsonValue).not.toContain("localIndex");

@@ -119,16 +119,6 @@ textarea:focus {
   padding: clamp(0.75rem, 2vw, 1.25rem);
 }
 
-.drawing-screen .save-status {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 30;
-  width: min(28rem, calc(100% - 2rem));
-  margin: 0;
-  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.16);
-}
-
 .drawing-screen .page-canvas {
   display: grid;
   grid-template-rows: auto auto 1fr;
@@ -254,7 +244,18 @@ textarea:focus {
   padding: clamp(1rem, 3vw, 2rem);
 }
 
-.save-status {
+.canvas-toast-stack {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  display: grid;
+  gap: 0.75rem;
+  width: min(28rem, calc(100% - 2rem));
+  pointer-events: none;
+}
+
+.canvas-toast {
   display: flex;
   gap: 1rem;
   align-items: center;
@@ -263,18 +264,23 @@ textarea:focus {
   border-radius: 1rem;
   background: var(--success-bg);
   color: var(--success-text);
-  margin-bottom: 1.5rem;
+  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.16);
   padding: 1rem;
+  pointer-events: auto;
 }
 
-.save-status p {
+.canvas-toast p {
   margin: 0.35rem 0 0;
 }
 
-.save-status--failed {
+.canvas-toast--failed {
   border-color: #e8bdb5;
   background: var(--danger-bg);
   color: var(--danger-text);
+}
+
+.canvas-toast--sticky {
+  box-shadow: 0 24px 70px rgba(116, 49, 38, 0.2);
 }
 
 .notebook-backup {

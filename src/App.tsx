@@ -171,6 +171,12 @@ type BackupStatus =
   | { readonly kind: "success"; readonly message: string }
   | { readonly kind: "failed"; readonly message: string };
 
+interface SaveToastVisibility {
+  readonly showSlowSaving: boolean;
+  readonly showSaved: boolean;
+  readonly showNextSaved: boolean;
+}
+
 type ThemePreference = "system" | "light" | "dark";
 type CanvasModalKind =
   | "search"
@@ -199,6 +205,12 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
+  const [saveToastVisibility, setSaveToastVisibility] =
+    useState<SaveToastVisibility>({
+      showSlowSaving: false,
+      showSaved: false,
+      showNextSaved: false
+    });
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
   const [notebookExportJson, setNotebookExportJson] = useState("");
   const saveAttemptRef = useRef(0);
@@ -344,6 +356,72 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     window.localStorage.setItem(AI_ENABLED_STORAGE_KEY, String(isAiEnabled));
   }, [isAiEnabled]);
 
+  useEffect(() => {
+    if (saveStatus.kind === "saving") {
+      setSaveToastVisibility((current) => ({
+        ...current,
+        showSaved: false
+      }));
+
+      const slowSaveTimer = window.setTimeout(() => {
+        setSaveToastVisibility({
+          showSlowSaving: true,
+          showSaved: false,
+          showNextSaved: true
+        });
+      }, 800);
+
+      return () => window.clearTimeout(slowSaveTimer);
+    }
+
+    if (saveStatus.kind === "saved") {
+      setSaveToastVisibility((current) =>
+        current.showNextSaved
+          ? {
+              showSlowSaving: false,
+              showSaved: true,
+              showNextSaved: false
+            }
+          : {
+              showSlowSaving: false,
+              showSaved: false,
+              showNextSaved: false
+            }
+      );
+      return;
+    }
+
+    if (saveStatus.kind === "failed" || saveStatus.kind === "conflict") {
+      setSaveToastVisibility({
+        showSlowSaving: false,
+        showSaved: false,
+        showNextSaved: true
+      });
+      return;
+    }
+
+    setSaveToastVisibility({
+      showSlowSaving: false,
+      showSaved: false,
+      showNextSaved: false
+    });
+  }, [saveStatus.kind]);
+
+  useEffect(() => {
+    if (!saveToastVisibility.showSaved) {
+      return;
+    }
+
+    const savedToastTimer = window.setTimeout(() => {
+      setSaveToastVisibility((current) => ({
+        ...current,
+        showSaved: false
+      }));
+    }, 3000);
+
+    return () => window.clearTimeout(savedToastTimer);
+  }, [saveToastVisibility.showSaved]);
+
   const activePage = useMemo(() => {
     if (notebook === null || route.kind === "notebook") {
       return null;
@@ -407,11 +485,21 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
   const handleSaveRetry = () => {
     if (saveStatus.kind === "failed") {
+      setSaveToastVisibility({
+        showSlowSaving: true,
+        showSaved: false,
+        showNextSaved: true
+      });
       saveNotebook(saveStatus.unsavedNotebook);
     }
   };
 
   const handleConflictReload = () => {
+    setSaveToastVisibility({
+      showSlowSaving: true,
+      showSaved: false,
+      showNextSaved: true
+    });
     void (async () => {
       try {
         const storedNotebook = await store.loadNotebook();
@@ -996,15 +1084,16 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         <h1 id="notebook-title" className="visually-hidden">
           {notebook.title}
         </h1>
-        <SaveStatusBanner
-          status={saveStatus}
+        <CanvasToastStack
+          saveStatus={saveStatus}
+          saveToastVisibility={saveToastVisibility}
+          backupStatus={backupStatus}
           onRetry={handleSaveRetry}
           onConflictReload={handleConflictReload}
         />
         <ActivePageView
           activePage={activePage}
           notebook={notebook}
-          backupStatus={backupStatus}
           highlightedCanvasItemId={highlightedCanvasItemId}
           notebookExportJson={notebookExportJson}
           searchQuery={searchQuery}
@@ -1067,15 +1156,16 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         </div>
       </section>
 
-      <SaveStatusBanner
-        status={saveStatus}
+      <CanvasToastStack
+        saveStatus={saveStatus}
+        saveToastVisibility={saveToastVisibility}
+        backupStatus={backupStatus}
         onRetry={handleSaveRetry}
         onConflictReload={handleConflictReload}
       />
 
       <NotebookBackupPanel
         exportJson={notebookExportJson}
-        status={backupStatus}
         onExport={handleNotebookExport}
         onImport={handleNotebookImport}
       />
@@ -1166,7 +1256,6 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           <ActivePageView
             activePage={activePage}
             notebook={notebook}
-            backupStatus={backupStatus}
             highlightedCanvasItemId={highlightedCanvasItemId}
             notebookExportJson={notebookExportJson}
             searchQuery={searchQuery}
@@ -1279,14 +1368,12 @@ const downloadJsonFile = (json: string, fileName: string) => {
 
 interface NotebookBackupPanelProps {
   readonly exportJson: string;
-  readonly status: BackupStatus;
   readonly onExport: () => void;
   readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
 }
 
 const NotebookBackupPanel = ({
   exportJson,
-  status,
   onExport,
   onImport
 }: NotebookBackupPanelProps) => (
@@ -1317,18 +1404,6 @@ const NotebookBackupPanel = ({
         />
       </label>
     </div>
-    {status.kind !== "idle" ? (
-      <p
-        className={
-          status.kind === "failed"
-            ? "notebook-backup__status notebook-backup__status--failed"
-            : "notebook-backup__status"
-        }
-        role={status.kind === "failed" ? "alert" : "status"}
-      >
-        {status.message}
-      </p>
-    ) : null}
     {exportJson.length > 0 ? (
       <label className="notebook-backup__json" htmlFor="notebook-export-json">
         Notebook Export JSON
@@ -1338,25 +1413,61 @@ const NotebookBackupPanel = ({
   </section>
 );
 
-interface SaveStatusBannerProps {
-  readonly status: SaveStatus;
+interface CanvasToastStackProps {
+  readonly saveStatus: SaveStatus;
+  readonly saveToastVisibility: SaveToastVisibility;
+  readonly backupStatus: BackupStatus;
   readonly onRetry: () => void;
   readonly onConflictReload: () => void;
 }
 
-const SaveStatusBanner = ({
-  status,
+const CanvasToastStack = ({
+  saveStatus,
+  saveToastVisibility,
+  backupStatus,
   onRetry,
   onConflictReload
-}: SaveStatusBannerProps) => {
-  if (status.kind === "idle") {
+}: CanvasToastStackProps) => {
+  const hasVisibleSaveToast =
+    saveStatus.kind === "failed" ||
+    saveStatus.kind === "conflict" ||
+    (saveStatus.kind === "saving" && saveToastVisibility.showSlowSaving) ||
+    (saveStatus.kind === "saved" && saveToastVisibility.showSaved);
+
+  if (!hasVisibleSaveToast && backupStatus.kind === "idle") {
     return null;
   }
 
+  return (
+    <div className="canvas-toast-stack" aria-label="Canvas Toasts">
+      <SaveStatusToast
+        status={saveStatus}
+        visibility={saveToastVisibility}
+        onRetry={onRetry}
+        onConflictReload={onConflictReload}
+      />
+      <BackupStatusToast status={backupStatus} />
+    </div>
+  );
+};
+
+interface SaveStatusToastProps {
+  readonly status: SaveStatus;
+  readonly visibility: SaveToastVisibility;
+  readonly onRetry: () => void;
+  readonly onConflictReload: () => void;
+}
+
+const SaveStatusToast = ({
+  status,
+  visibility,
+  onRetry,
+  onConflictReload
+}: SaveStatusToastProps) => {
   if (status.kind === "failed") {
     return (
       <section
-        className="save-status save-status--failed"
+        className="canvas-toast canvas-toast--failed canvas-toast--sticky"
         aria-label="Autosave status"
         role="alert"
       >
@@ -1378,7 +1489,7 @@ const SaveStatusBanner = ({
   if (status.kind === "conflict") {
     return (
       <section
-        className="save-status save-status--failed"
+        className="canvas-toast canvas-toast--failed canvas-toast--sticky"
         aria-label="Autosave status"
         role="alert"
       >
@@ -1397,16 +1508,61 @@ const SaveStatusBanner = ({
     );
   }
 
-  const message =
-    status.kind === "saving" ? "Saving Notebook changes" : "Notebook changes saved";
+  if (status.kind === "saving" && visibility.showSlowSaving) {
+    return (
+      <section
+        className="canvas-toast"
+        aria-label="Autosave status"
+        aria-live="polite"
+      >
+        <strong>Saving Notebook changes</strong>
+      </section>
+    );
+  }
+
+  if (status.kind === "saved" && visibility.showSaved) {
+    return (
+      <section
+        className="canvas-toast"
+        aria-label="Autosave status"
+        aria-live="polite"
+      >
+        <strong>Notebook changes saved</strong>
+      </section>
+    );
+  }
+
+  return null;
+};
+
+interface BackupStatusToastProps {
+  readonly status: BackupStatus;
+}
+
+const BackupStatusToast = ({ status }: BackupStatusToastProps) => {
+  if (status.kind === "idle") {
+    return null;
+  }
 
   return (
     <section
-      className="save-status"
-      aria-label="Autosave status"
-      aria-live="polite"
+      className={
+        status.kind === "failed"
+          ? "canvas-toast canvas-toast--failed canvas-toast--sticky"
+          : "canvas-toast"
+      }
+      aria-label="Notebook Export Canvas Toast"
+      role={status.kind === "failed" ? "alert" : "status"}
+      aria-live={status.kind === "failed" ? undefined : "polite"}
     >
-      <strong>{message}</strong>
+      <div>
+        <strong>
+          {status.kind === "failed"
+            ? "Notebook Export needs attention"
+            : "Notebook Export complete"}
+        </strong>
+        <p>{status.message}</p>
+      </div>
     </section>
   );
 };
@@ -1452,7 +1608,6 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
 interface ActivePageViewProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
-  readonly backupStatus: BackupStatus;
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly notebookExportJson: string;
   readonly searchQuery: string;
@@ -1527,7 +1682,6 @@ interface ActivePageViewProps {
 const ActivePageView = ({
   activePage,
   notebook,
-  backupStatus,
   highlightedCanvasItemId,
   notebookExportJson,
   searchQuery,
@@ -1697,7 +1851,6 @@ const ActivePageView = ({
         <CanvasModal title="Notebook Export and Import" onClose={() => setActiveModal(null)}>
           <NotebookBackupPanel
             exportJson={notebookExportJson}
-            status={backupStatus}
             onExport={onNotebookExport}
             onImport={onNotebookImport}
           />
