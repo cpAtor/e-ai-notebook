@@ -718,12 +718,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handleNotebookOpen = () => {
-    if (notebook !== null) {
-      const initialRoute = initialRouteForNotebook(notebook, { kind: "notebook" });
-      setRoute(initialRoute);
-      rememberLastOpenedPage(initialRoute);
-    }
-
+    window.history.pushState({}, "", "/");
+    setRoute({ kind: "notebook" });
     setHighlightedCanvasItemId(null);
   };
 
@@ -957,6 +953,53 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   }
 
+  if (activePage?.kind === "found") {
+    return (
+      <main className="drawing-screen" aria-labelledby="notebook-title">
+        <h1 id="notebook-title" className="visually-hidden">
+          {notebook.title}
+        </h1>
+        <SaveStatusBanner
+          status={saveStatus}
+          onRetry={handleSaveRetry}
+          onConflictReload={handleConflictReload}
+        />
+        {backupStatus.kind !== "idle" ? (
+          <p
+            className={
+              backupStatus.kind === "failed"
+                ? "notebook-backup__status notebook-backup__status--failed"
+                : "notebook-backup__status"
+            }
+            role={backupStatus.kind === "failed" ? "alert" : "status"}
+          >
+            {backupStatus.message}
+          </p>
+        ) : null}
+        <ActivePageView
+          activePage={activePage}
+          notebook={notebook}
+          highlightedCanvasItemId={highlightedCanvasItemId}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onSearchQueryChange={setSearchQuery}
+          onSearchResultOpen={handleSearchResultOpen}
+          onNotebookOpen={handleNotebookOpen}
+          onCodeBlockAdd={handleCodeBlockAdd}
+          onCodeBlockChange={handleCodeBlockChange}
+          onDiagramItemAdd={handleDiagramItemAdd}
+          onDiagramItemChange={handleDiagramItemChange}
+          onImageItemAdd={handleImageItemAdd}
+          onImageItemMetadataChange={handleImageItemMetadataChange}
+          onLinkCardAdd={handleLinkCardAdd}
+          onLinkCardTagsChange={handleLinkCardTagsChange}
+          onPageTextCanvasChange={handlePageTextCanvasChange}
+          onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell" aria-labelledby="notebook-title">
       <section className="hero">
@@ -1088,6 +1131,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             activePage={activePage}
             notebook={notebook}
             highlightedCanvasItemId={highlightedCanvasItemId}
+            searchQuery={searchQuery}
+            searchResults={searchResults}
+            onSearchQueryChange={setSearchQuery}
+            onSearchResultOpen={handleSearchResultOpen}
             onNotebookOpen={handleNotebookOpen}
             onCodeBlockAdd={handleCodeBlockAdd}
             onCodeBlockChange={handleCodeBlockChange}
@@ -1359,6 +1406,10 @@ interface ActivePageViewProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly searchQuery: string;
+  readonly searchResults: readonly SearchResult[];
+  readonly onSearchQueryChange: (query: string) => void;
+  readonly onSearchResultOpen: (result: SearchResult) => void;
   readonly onNotebookOpen: () => void;
   readonly onCodeBlockAdd: (
     pageId: PageId,
@@ -1418,6 +1469,10 @@ const ActivePageView = ({
   activePage,
   notebook,
   highlightedCanvasItemId,
+  searchQuery,
+  searchResults,
+  onSearchQueryChange,
+  onSearchResultOpen,
   onNotebookOpen,
   onCodeBlockAdd,
   onCodeBlockChange,
@@ -1462,14 +1517,40 @@ const ActivePageView = ({
 
   return (
     <article className="page-canvas" aria-labelledby="active-page-title">
-      <p className="eyebrow">{activePage.section.title}</p>
-      <h3 id="active-page-title">{activePage.page.title}</h3>
-      <p>Page Type: unset</p>
-      <p>
-        Use tldraw text and draw tools for rough interview-prep work. Text Canvas
-        Items are searchable; Freehand Drawings autosave and reload for navigation
-        without OCR or handwriting search.
-      </p>
+      <header className="drawing-screen__header">
+        <div>
+          <p className="eyebrow">{activePage.section.title}</p>
+          <h2 id="active-page-title">{activePage.page.title}</h2>
+          <p>
+            Use tldraw text and draw tools for rough interview-prep work. Text
+            Canvas Items are searchable; Freehand Drawings autosave and reload for
+            navigation without OCR or handwriting search.
+          </p>
+          <p>Page Type: unset</p>
+        </div>
+        <button type="button" onClick={onNotebookOpen}>
+          Notebook Management
+        </button>
+      </header>
+      <DrawingScreenSearch
+        query={searchQuery}
+        results={searchResults}
+        onQueryChange={onSearchQueryChange}
+        onResultOpen={onSearchResultOpen}
+      />
+      <PageTextCanvas
+        page={activePage.page}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        showEmptyCanvasPrompts={
+          activePage.page.id === DEFAULT_PAGE_ID &&
+          !notebook.canvasItems.some(
+            (canvasItem) => canvasItem.pageId === activePage.page.id
+          )
+        }
+        onPageTextCanvasChange={onPageTextCanvasChange}
+        onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
+      />
       <PageLinkCards
         page={activePage.page}
         notebook={notebook}
@@ -1497,24 +1578,69 @@ const ActivePageView = ({
         onCodeBlockAdd={onCodeBlockAdd}
         onCodeBlockChange={onCodeBlockChange}
       />
-      <PageTextCanvas
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onPageTextCanvasChange={onPageTextCanvasChange}
-        onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
-      />
-      <button type="button" onClick={onNotebookOpen}>
-        Back to Notebook
-      </button>
     </article>
   );
 };
+
+interface DrawingScreenSearchProps {
+  readonly query: string;
+  readonly results: readonly SearchResult[];
+  readonly onQueryChange: (query: string) => void;
+  readonly onResultOpen: (result: SearchResult) => void;
+}
+
+const DrawingScreenSearch = ({
+  query,
+  results,
+  onQueryChange,
+  onResultOpen
+}: DrawingScreenSearchProps) => (
+  <section className="drawing-screen-search" aria-labelledby="drawing-search-title">
+    <div>
+      <p className="eyebrow">Local Index</p>
+      <h3 id="drawing-search-title">Ask/Search Notebook</h3>
+    </div>
+    <label className="search-field" htmlFor="notebook-search">
+      Search Canvas Items, Tags, Page titles, and Section paths
+      <input
+        id="notebook-search"
+        value={query}
+        placeholder="e.g. binary search invariant"
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+    </label>
+    {query.trim().length > 0 && results.length === 0 ? (
+      <p className="empty-state">No Search Results found in this Notebook.</p>
+    ) : null}
+    {results.length > 0 ? (
+      <ul className="search-results" aria-label="Search Results">
+        {results.map((result) => (
+          <li className="search-result" key={result.id}>
+            <div>
+              <strong>{result.notebookPath}</strong>
+              <span>{result.sourceLabel}</span>
+              {result.matchedTags.length > 0 ? (
+                <span>
+                  Matched Tags: {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                </span>
+              ) : null}
+              <p>{result.snippet}</p>
+            </div>
+            <button type="button" onClick={() => onResultOpen(result)}>
+              Open Result
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null}
+  </section>
+);
 
 interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly showEmptyCanvasPrompts: boolean;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTldrawCanvasSnapshot
@@ -1529,6 +1655,7 @@ const PageTextCanvas = ({
   page,
   notebook,
   highlightedCanvasItemId,
+  showEmptyCanvasPrompts,
   onPageTextCanvasChange,
   onTextCanvasItemTagsChange
 }: PageTextCanvasProps) => {
@@ -1648,6 +1775,12 @@ const PageTextCanvas = ({
         data-testid="tldraw-page-canvas"
         aria-label={`${page.title} tldraw text canvas`}
       >
+        {showEmptyCanvasPrompts ? (
+          <EmptyCanvasPrompts
+            onUseTextTool={() => editorRef.current?.setCurrentTool("text")}
+            onUseDrawTool={() => editorRef.current?.setCurrentTool("draw")}
+          />
+        ) : null}
         {highlightedRegion !== null ? (
           <div
             className="canvas-region-highlight"
@@ -1675,6 +1808,45 @@ const PageTextCanvas = ({
     </>
   );
 };
+
+interface EmptyCanvasPromptsProps {
+  readonly onUseTextTool: () => void;
+  readonly onUseDrawTool: () => void;
+}
+
+const EmptyCanvasPrompts = ({
+  onUseTextTool,
+  onUseDrawTool
+}: EmptyCanvasPromptsProps) => (
+  <div className="empty-canvas-prompts" aria-label="Empty Canvas Prompts">
+    <p className="eyebrow">Empty Canvas Prompts</p>
+    <h3>Start rough interview-prep work here</h3>
+    <p>
+      Capture first, organize later. These prompts disappear after the first Canvas
+      Item lands on this Page.
+    </p>
+    <div>
+      <button type="button" onClick={onUseTextTool}>
+        Start typing
+      </button>
+      <button type="button" onClick={onUseDrawTool}>
+        Sketch rough work
+      </button>
+      <button
+        type="button"
+        onClick={() => document.getElementById("link-card-url")?.focus()}
+      >
+        Paste screenshot or link
+      </button>
+      <button
+        type="button"
+        onClick={() => document.getElementById("notebook-search")?.focus()}
+      >
+        Ask/Search Notebook
+      </button>
+    </div>
+  </div>
+);
 
 interface TextCanvasItemTagsProps {
   readonly pageTextItems: readonly TextCanvasItem[];

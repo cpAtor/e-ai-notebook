@@ -59,8 +59,18 @@ describe("App", () => {
     };
   };
 
+  const openNotebookManagement = async (
+    user: ReturnType<typeof userEvent.setup>
+  ) => {
+    await user.click(
+      await screen.findByRole("button", { name: "Notebook Management" })
+    );
+  };
+
   it("shows a private Interview Prep Notebook with seeded Sections", async () => {
+    const user = userEvent.setup();
     await renderApp();
+    await openNotebookManagement(user);
 
     expect(
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
@@ -84,6 +94,8 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Inbox")).toBeInTheDocument();
     expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    expect(screen.getByLabelText("Empty Canvas Prompts")).toBeInTheDocument();
+    expect(screen.queryByText("Shape this Notebook around your prep")).not.toBeInTheDocument();
     await expect(store.loadNotebook()).resolves.toEqual(
       expect.objectContaining({
         sections: expect.arrayContaining([
@@ -99,6 +111,47 @@ describe("App", () => {
         ])
       })
     );
+  });
+
+  it("hides Empty Canvas Prompts once the Default Page has a Canvas Item", async () => {
+    const notebookWithDefaultText = replacePageTextCanvasItems(
+      {
+        ...createStarterNotebook(),
+        sections: [{ id: "section_inbox", title: "Inbox" }],
+        pages: [
+          {
+            id: "page_default",
+            sectionId: "section_inbox",
+            title: "Default Page",
+            pageType: null
+          }
+        ]
+      },
+      "page_default",
+      [
+        {
+          id: "canvas_item_started",
+          pageId: "page_default",
+          type: "text",
+          text: "Started rough work",
+          tags: []
+        }
+      ],
+      [
+        {
+          pageId: "page_default",
+          canvasItemId: "canvas_item_started",
+          bounds: { x: 64, y: 48, width: 260, height: 64 }
+        }
+      ]
+    );
+
+    await renderApp(notebookWithDefaultText);
+
+    expect(
+      await screen.findByRole("heading", { name: "Default Page" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Empty Canvas Prompts")).not.toBeInTheDocument();
   });
 
   it("opens the last opened Page for a returning Notebook when it still exists", async () => {
@@ -155,6 +208,7 @@ describe("App", () => {
   it("renames, adds, and removes Sections", async () => {
     const user = userEvent.setup();
     await renderApp();
+    await openNotebookManagement(user);
 
     await screen.findByDisplayValue("DSA");
     await user.clear(screen.getByDisplayValue("DSA"));
@@ -196,6 +250,7 @@ describe("App", () => {
     };
 
     const view = render(<App store={failingStore} />);
+    await openNotebookManagement(user);
 
     await screen.findByDisplayValue("DSA");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
@@ -219,6 +274,7 @@ describe("App", () => {
 
     view.unmount();
     render(<App store={failingStore} />);
+    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
   });
@@ -246,6 +302,7 @@ describe("App", () => {
     };
 
     render(<App store={conflictStore} />);
+    await openNotebookManagement(user);
 
     await screen.findByDisplayValue("DSA");
 
@@ -258,6 +315,7 @@ describe("App", () => {
     expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Reload Stored Notebook" }));
+    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("External prep")).toBeInTheDocument();
   });
@@ -385,6 +443,7 @@ describe("App", () => {
         type: "application/json"
       })
     );
+    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
     expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(
@@ -417,6 +476,7 @@ describe("App", () => {
   it("creates a blank Page in a Section and opens a URL-addressable route", async () => {
     const user = userEvent.setup();
     await renderApp();
+    await openNotebookManagement(user);
 
     const dsaInput = await screen.findByDisplayValue("DSA");
     const dsaRow = dsaInput.closest("li");
@@ -442,6 +502,7 @@ describe("App", () => {
   it("reopens the same Page from its URL after reload", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
+    await openNotebookManagement(user);
 
     const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
 
@@ -596,6 +657,7 @@ describe("App", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
+    await openNotebookManagement(user);
 
     const researchRow = (await screen.findByDisplayValue("Research")).closest("li");
 
@@ -656,6 +718,7 @@ describe("App", () => {
   it("creates, edits, reloads, searches, and highlights Code Blocks without runner affordances", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
+    await openNotebookManagement(user);
 
     const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
 
@@ -683,7 +746,7 @@ describe("App", () => {
       screen.getByLabelText("Edit Code Block"),
       "return seen.get(complement);"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "two sum");
 
     expect(await screen.findByText("Code Block")).toBeInTheDocument();
@@ -721,6 +784,7 @@ describe("App", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
+    await openNotebookManagement(user);
 
     const systemDesignRow = (
       await screen.findByDisplayValue("System Design")
@@ -758,7 +822,7 @@ describe("App", () => {
       screen.getByLabelText("Edit Image Item caption"),
       "Updated failover sketch"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "availability");
 
     expect(await screen.findByText("Image Item")).toBeInTheDocument();
@@ -796,6 +860,7 @@ describe("App", () => {
   it("creates, edits, reloads, searches, and highlights Diagram Items for system design", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
+    await openNotebookManagement(user);
 
     const systemDesignRow = (
       await screen.findByDisplayValue("System Design")
@@ -828,7 +893,7 @@ describe("App", () => {
       screen.getByLabelText("Edit Diagram Item label"),
       "Queue absorbs write spikes"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
 
     expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
@@ -1039,6 +1104,7 @@ describe("App", () => {
     );
 
     await renderApp();
+    await openNotebookManagement(user);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
     await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
 
