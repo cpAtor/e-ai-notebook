@@ -30,6 +30,11 @@ const readTitle = (form: HTMLFormElement): string => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const createCustomSectionId = (fallbackCounter: number): string => {
+  const randomId = globalThis.crypto?.randomUUID();
+  return `custom-${randomId ?? `${Date.now()}-${fallbackCounter}`}`;
+};
+
 function App() {
   const [sections, setSections] = useState<Section[]>(starterSections);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
@@ -46,7 +51,7 @@ function App() {
     setSections((currentSections) => [
       ...currentSections,
       {
-        id: `custom-${nextCustomSectionId.current++}`,
+        id: createCustomSectionId(nextCustomSectionId.current++),
         title,
         prompt: 'Add notes, links, and practice items for this custom section.',
       },
