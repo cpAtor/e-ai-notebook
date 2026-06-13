@@ -113,6 +113,7 @@ When creating a breakdown:
 - **Prefer many thin issues over few thick ones** — each should be independently fixable and verifiable
 - **Mark blocking relationships honestly** — if issue B genuinely can't be tested until issue A is fixed, say so. If they're independent, mark both as "None — can start immediately"
 - **Create issues in dependency order** so you can reference real issue numbers in "Blocked by"
+- **Mirror blockers into GitHub relationships** — after creating an issue with blockers, set GitHub's first-class blocked-by relationship with GraphQL `addBlockedBy`, skipping relationships that already exist
 - **Maximize parallelism** — the goal is that multiple people (or agents) can grab different issues simultaneously
 
 #### Rules for all issue bodies

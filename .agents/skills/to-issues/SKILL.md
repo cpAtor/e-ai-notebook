@@ -55,6 +55,8 @@ For each approved slice, publish a new issue to the issue tracker. Use the issue
 
 Publish issues in dependency order (blockers first) so you can reference real issue identifiers in the "Blocked by" field.
 
+After creating each issue with blockers, also set GitHub's first-class blocked-by relationships. Resolve the new issue and each blocker to node IDs, query existing `blockedBy` relationships, then call GraphQL `addBlockedBy` only for missing relationships.
+
 <issue-template>
 ## Parent
 
