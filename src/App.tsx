@@ -48,7 +48,7 @@ function App() {
       {
         id: `custom-${nextCustomSectionId.current++}`,
         title,
-        prompt: 'Add notes, links, and practice items for this custom Section.',
+        prompt: 'Add notes, links, and practice items for this custom section.',
       },
     ]);
     event.currentTarget.reset();
