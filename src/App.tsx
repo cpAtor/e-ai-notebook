@@ -61,6 +61,7 @@ import {
 import {
   createNotebookStore,
   NotebookRecoveryError,
+  NotebookStorageUnavailableError,
   notebookExportFileName,
   parseNotebookExport,
   serializeNotebookExport,
@@ -166,9 +167,16 @@ interface RecoveryState {
   readonly status: BackupStatus;
 }
 
+type LoadError =
+  | { readonly kind: "generic"; readonly message: string }
+  | { readonly kind: "unsupported-storage"; readonly message: string };
+
+const unsupportedStorageMessage = (error: NotebookStorageUnavailableError) =>
+  `${error.message} Capture cannot be safely persisted in this browser right now. Check that IndexedDB is enabled and not blocked by private browsing, site settings, storage permissions, or browser policy before adding Notebook material.`;
+
 export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
@@ -212,11 +220,24 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             return;
           }
 
-          setLoadError(
-            error instanceof Error
-              ? error.message
-              : "Notebook storage could not be loaded."
-          );
+          if (error instanceof NotebookStorageUnavailableError) {
+            setNotebook(null);
+            setRecoveryState(null);
+            setSaveStatus({ kind: "idle" });
+            setLoadError({
+              kind: "unsupported-storage",
+              message: unsupportedStorageMessage(error)
+            });
+            return;
+          }
+
+          setLoadError({
+            kind: "generic",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Notebook storage could not be loaded."
+          });
         }
       });
 
@@ -265,6 +286,17 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
       })
       .catch((error: unknown) => {
         if (saveAttemptRef.current === saveAttempt) {
+          if (error instanceof NotebookStorageUnavailableError) {
+            setNotebook(null);
+            setRecoveryState(null);
+            setSaveStatus({ kind: "idle" });
+            setLoadError({
+              kind: "unsupported-storage",
+              message: unsupportedStorageMessage(error)
+            });
+            return;
+          }
+
           setSaveStatus({
             kind: "failed",
             message:
@@ -342,6 +374,17 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           message: successMessage
         });
       } catch (error: unknown) {
+        if (error instanceof NotebookStorageUnavailableError) {
+          setNotebook(null);
+          setRecoveryState(null);
+          setSaveStatus({ kind: "idle" });
+          setLoadError({
+            kind: "unsupported-storage",
+            message: unsupportedStorageMessage(error)
+          });
+          return;
+        }
+
         setStatus({
           kind: "failed",
           message:
@@ -400,6 +443,17 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             "Started a new Notebook after replacing the invalid stored payload."
         });
       } catch (error: unknown) {
+        if (error instanceof NotebookStorageUnavailableError) {
+          setNotebook(null);
+          setRecoveryState(null);
+          setSaveStatus({ kind: "idle" });
+          setLoadError({
+            kind: "unsupported-storage",
+            message: unsupportedStorageMessage(error)
+          });
+          return;
+        }
+
         setRecoveryState((currentState) =>
           currentState === null
             ? null
@@ -674,12 +728,23 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   }
 
   if (loadError !== null) {
+    const isUnsupportedStorage = loadError.kind === "unsupported-storage";
+
     return (
       <main className="app-shell" aria-labelledby="storage-error-title">
-        <section className="section-card">
-          <p className="eyebrow">Storage needs attention</p>
-          <h1 id="storage-error-title">Notebook could not be opened</h1>
-          <p className="empty-state">{loadError}</p>
+        <section
+          className="section-card"
+          role={isUnsupportedStorage ? "alert" : undefined}
+        >
+          <p className="eyebrow">
+            {isUnsupportedStorage ? "Storage unsupported" : "Storage needs attention"}
+          </p>
+          <h1 id="storage-error-title">
+            {isUnsupportedStorage
+              ? "Notebook storage is unavailable"
+              : "Notebook could not be opened"}
+          </h1>
+          <p className="empty-state">{loadError.message}</p>
         </section>
       </main>
     );

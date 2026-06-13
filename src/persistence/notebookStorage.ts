@@ -159,6 +159,17 @@ export class NotebookRecoveryError extends Error {
   }
 }
 
+export class NotebookStorageUnavailableError extends Error {
+  constructor(operation: string, cause: unknown) {
+    super(
+      cause instanceof Error
+        ? `Browser storage is unavailable during ${operation}: ${cause.message}`
+        : `Browser storage is unavailable during ${operation}.`
+    );
+    this.name = "NotebookStorageUnavailableError";
+  }
+}
+
 class NotebookDatabase extends Dexie {
   notebooks!: Table<NotebookRecordV2, NotebookId>;
 
@@ -185,11 +196,17 @@ export const createNotebookStore = (
 
   return {
     loadNotebook: async () => {
-      const record = await database.notebooks.get(NOTEBOOK_RECORD_ID);
+      const record = await runStorageOperation(
+        "Notebook startup",
+        () => database.notebooks.get(NOTEBOOK_RECORD_ID)
+      );
 
       if (record === undefined) {
         const notebook = createStarterNotebook();
-        await database.notebooks.put(toNotebookRecord(notebook));
+        await runStorageOperation(
+          "starter Notebook creation",
+          () => database.notebooks.put(toNotebookRecord(notebook))
+        );
         return notebook;
       }
 
@@ -200,16 +217,25 @@ export const createNotebookStore = (
       }
     },
     loadRawNotebookPayload: async () => {
-      const record = await database.notebooks.get(NOTEBOOK_RECORD_ID);
+      const record = await runStorageOperation(
+        "raw Notebook payload loading",
+        () => database.notebooks.get(NOTEBOOK_RECORD_ID)
+      );
 
       return record === undefined ? null : serializeRawPayload(record);
     },
     saveNotebook: async (notebook) => {
-      await database.notebooks.put(toNotebookRecord(notebook));
+      await runStorageOperation(
+        "Notebook persistence",
+        () => database.notebooks.put(toNotebookRecord(notebook))
+      );
     },
     startFreshNotebook: async () => {
       const notebook = createStarterNotebook();
-      await database.notebooks.put(toNotebookRecord(notebook));
+      await runStorageOperation(
+        "fresh Notebook creation",
+        () => database.notebooks.put(toNotebookRecord(notebook))
+      );
       return notebook;
     },
     close: () => {
@@ -288,3 +314,14 @@ const toNotebookRecord = (notebook: Notebook): NotebookRecordV2 =>
   });
 
 const serializeRawPayload = (payload: unknown): string => JSON.stringify(payload, null, 2);
+
+const runStorageOperation = async <Result>(
+  operation: string,
+  run: () => Promise<Result>
+): Promise<Result> => {
+  try {
+    return await run();
+  } catch (error: unknown) {
+    throw new NotebookStorageUnavailableError(operation, error);
+  }
+};

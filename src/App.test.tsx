@@ -17,6 +17,7 @@ import {
 import {
   createNotebookStore,
   NotebookRecoveryError,
+  NotebookStorageUnavailableError,
   serializeNotebookExport,
   type NotebookStore
 } from "./persistence/notebookStorage";
@@ -142,6 +143,69 @@ describe("App", () => {
     render(<App store={failingStore} />);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
+  });
+
+  it("shows unsupported storage when the Notebook cannot load from IndexedDB", async () => {
+    const unavailableStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => {
+        throw new NotebookStorageUnavailableError(
+          "Notebook startup",
+          new Error("IndexedDB is blocked.")
+        );
+      }),
+      saveNotebook: vi.fn(),
+      loadRawNotebookPayload: vi.fn(async () => null),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={unavailableStore} />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Notebook storage is unavailable"
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Capture cannot be safely persisted/i
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/IndexedDB is enabled/i);
+    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Section" })).not.toBeInTheDocument();
+  });
+
+  it("enters unsupported storage instead of claiming autosave after a first persistence failure", async () => {
+    const user = userEvent.setup();
+    const unavailableStore: NotebookStore = {
+      loadNotebook: vi.fn(async () => createStarterNotebook()),
+      saveNotebook: vi.fn(async () => {
+        throw new NotebookStorageUnavailableError(
+          "Notebook persistence",
+          new Error("IndexedDB writes are blocked.")
+        );
+      }),
+      loadRawNotebookPayload: vi.fn(async () => null),
+      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
+      close: vi.fn()
+    };
+
+    render(<App store={unavailableStore} />);
+
+    await screen.findByDisplayValue("DSA");
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Notebook storage is unavailable"
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Capture cannot be safely persisted/i
+    );
+    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saving Notebook changes")).not.toBeInTheDocument();
   });
 
   it("shows recovery actions for invalid stored Notebook data without claiming autosave", async () => {
