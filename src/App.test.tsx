@@ -244,7 +244,7 @@ describe("App", () => {
 
     await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search text Canvas Items/), "invariant");
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "invariant");
 
     const result = await screen.findByText(
       "Interview Prep Notebook / DSA / Untitled Page"
@@ -299,7 +299,7 @@ describe("App", () => {
       "arrays, invariant"
     );
     await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
-    await user.type(screen.getByLabelText(/Search text Canvas Items/), "arrays");
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
 
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
     await waitFor(async () => {
@@ -309,5 +309,68 @@ describe("App", () => {
         "invariant"
       ]);
     });
+  });
+
+  it("adds Link Cards with notes and Tags, persists them, and searches without crawling", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("Network is disabled by default."));
+    const firstRender = await renderApp();
+
+    const researchRow = (await screen.findByDisplayValue("Research")).closest("li");
+
+    if (researchRow === null) {
+      throw new Error("Expected Research Section row.");
+    }
+
+    await user.click(
+      within(researchRow).getByRole("button", { name: "New Blank Page" })
+    );
+    await user.type(
+      await screen.findByLabelText("Link Card URL"),
+      "https://example.com/system-design"
+    );
+    await user.type(
+      screen.getByLabelText("Optional notes"),
+      "Distributed cache research queue"
+    );
+    await user.type(screen.getByLabelText("Optional Tags"), "cache, reading");
+    await user.click(screen.getByRole("button", { name: "Add Link Card" }));
+
+    expect(
+      await screen.findByRole("link", {
+        name: "https://example.com/system-design"
+      })
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "cache");
+
+    expect(await screen.findByText("Link Card")).toBeInTheDocument();
+    expect(screen.getByText("Matched Tags: #cache")).toBeInTheDocument();
+    expect(screen.getAllByText(/Distributed cache research queue/).length).toBeGreaterThan(0);
+    await waitFor(async () => {
+      const reloadedNotebook = await firstRender.store.loadNotebook();
+      expect(reloadedNotebook.canvasItems).toContainEqual({
+        id: expect.stringMatching(/^canvas_item_/),
+        pageId: expect.stringMatching(/^page_/),
+        type: "link-card",
+        url: "https://example.com/system-design",
+        note: "Distributed cache research queue",
+        tags: ["cache", "reading"]
+      });
+    });
+
+    const pagePath = window.location.pathname;
+    firstRender.unmount();
+    firstRender.store.close();
+    window.history.replaceState({}, "", pagePath);
+    await renderApp();
+
+    expect(
+      await screen.findByRole("link", {
+        name: "https://example.com/system-design"
+      })
+    ).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

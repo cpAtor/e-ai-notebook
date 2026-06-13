@@ -18,6 +18,17 @@ export interface TextCanvasItem {
   readonly tags: readonly string[];
 }
 
+export interface LinkCardCanvasItem {
+  readonly id: CanvasItemId;
+  readonly pageId: PageId;
+  readonly type: "link-card";
+  readonly url: string;
+  readonly note: string;
+  readonly tags: readonly string[];
+}
+
+export type CanvasItem = TextCanvasItem | LinkCardCanvasItem;
+
 export interface CanvasRegion {
   readonly pageId: PageId;
   readonly canvasItemId: CanvasItemId;
@@ -42,7 +53,7 @@ export interface Notebook {
   readonly privacyMode: "private-by-default";
   readonly sections: readonly Section[];
   readonly pages: readonly Page[];
-  readonly canvasItems: readonly TextCanvasItem[];
+  readonly canvasItems: readonly CanvasItem[];
   readonly canvasRegions: readonly CanvasRegion[];
 }
 
@@ -161,6 +172,13 @@ export const replacePageTextCanvasItems = (
   nextRegions: readonly CanvasRegion[]
 ): Notebook => {
   const pageExists = notebook.pages.some((page) => page.id === pageId);
+  const previousPageTextItemIds = new Set(
+    notebook.canvasItems
+      .filter(
+        (canvasItem) => canvasItem.pageId === pageId && canvasItem.type === "text"
+      )
+      .map((canvasItem) => canvasItem.id)
+  );
 
   if (!pageExists) {
     throw new Error("Cannot save Canvas Items for an unknown Page.");
@@ -169,10 +187,13 @@ export const replacePageTextCanvasItems = (
   return {
     ...notebook,
     canvasItems: [
-      ...notebook.canvasItems.filter((canvasItem) => canvasItem.pageId !== pageId),
+      ...notebook.canvasItems.filter(
+        (canvasItem) => canvasItem.pageId !== pageId || canvasItem.type !== "text"
+      ),
       ...nextTextItems.map((nextTextItem) => {
         const previousTextItem = notebook.canvasItems.find(
-          (canvasItem) => canvasItem.id === nextTextItem.id
+          (canvasItem): canvasItem is TextCanvasItem =>
+            canvasItem.id === nextTextItem.id && canvasItem.type === "text"
         );
 
         return {
@@ -185,7 +206,11 @@ export const replacePageTextCanvasItems = (
       })
     ],
     canvasRegions: [
-      ...notebook.canvasRegions.filter((region) => region.pageId !== pageId),
+      ...notebook.canvasRegions.filter(
+        (region) =>
+          region.pageId !== pageId ||
+          !previousPageTextItemIds.has(region.canvasItemId)
+      ),
       ...nextRegions
     ]
   };
@@ -197,7 +222,7 @@ export const updateTextCanvasItemTags = (
   nextTags: readonly string[]
 ): Notebook => {
   const textItemExists = notebook.canvasItems.some(
-    (canvasItem) => canvasItem.id === canvasItemId
+    (canvasItem) => canvasItem.id === canvasItemId && canvasItem.type === "text"
   );
 
   if (!textItemExists) {
@@ -208,6 +233,67 @@ export const updateTextCanvasItemTags = (
     ...notebook,
     canvasItems: notebook.canvasItems.map((canvasItem) =>
       canvasItem.id === canvasItemId
+        ? { ...canvasItem, tags: normalizeTags(nextTags) }
+        : canvasItem
+    )
+  };
+};
+
+export const addLinkCardCanvasItem = (
+  notebook: Notebook,
+  pageId: PageId,
+  canvasItemId: CanvasItemId,
+  url: string,
+  note: string,
+  tags: readonly string[]
+): Notebook => {
+  const pageExists = notebook.pages.some((page) => page.id === pageId);
+
+  if (!pageExists) {
+    throw new Error("Cannot add a Link Card for an unknown Page.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: [
+      ...notebook.canvasItems,
+      {
+        id: canvasItemId,
+        pageId,
+        type: "link-card",
+        url: normalizeLinkCardUrl(url),
+        note: note.trim(),
+        tags: normalizeTags(tags)
+      }
+    ],
+    canvasRegions: [
+      ...notebook.canvasRegions,
+      {
+        pageId,
+        canvasItemId,
+        bounds: { x: 0, y: 0, width: 320, height: 120 }
+      }
+    ]
+  };
+};
+
+export const updateLinkCardCanvasItemTags = (
+  notebook: Notebook,
+  canvasItemId: CanvasItemId,
+  nextTags: readonly string[]
+): Notebook => {
+  const linkCardExists = notebook.canvasItems.some(
+    (canvasItem) => canvasItem.id === canvasItemId && canvasItem.type === "link-card"
+  );
+
+  if (!linkCardExists) {
+    throw new Error("Cannot tag an unknown Link Card.");
+  }
+
+  return {
+    ...notebook,
+    canvasItems: notebook.canvasItems.map((canvasItem) =>
+      canvasItem.id === canvasItemId && canvasItem.type === "link-card"
         ? { ...canvasItem, tags: normalizeTags(nextTags) }
         : canvasItem
     )
@@ -230,6 +316,14 @@ export const createPageId = (): PageId => {
   return `page_${Date.now().toString(36)}`;
 };
 
+export const createCanvasItemId = (): CanvasItemId => {
+  if (globalThis.crypto?.randomUUID !== undefined) {
+    return `canvas_item_${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `canvas_item_${Date.now().toString(36)}`;
+};
+
 const sectionIdFromTitle = (title: string): SectionId =>
   `section_${title.toLowerCase().replaceAll(" ", "_")}`;
 
@@ -249,4 +343,14 @@ export const normalizeTags = (tags: readonly string[]): readonly string[] => {
     .filter((tag) => tag.length > 0);
 
   return [...new Set(normalizedTags)];
+};
+
+const normalizeLinkCardUrl = (url: string): string => {
+  const parsedUrl = new URL(url.trim());
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("Link Card URL must use http or https.");
+  }
+
+  return parsedUrl.toString();
 };

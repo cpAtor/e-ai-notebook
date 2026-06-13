@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addLinkCardCanvasItem,
   addBlankPage,
   createStarterNotebook,
   replacePageTextCanvasItems
@@ -68,5 +69,46 @@ describe("Local Index", () => {
         snippet: expect.stringContaining("Binary search invariant")
       })
     ]);
+  });
+
+  it("indexes Link Card URLs, notes, and Tags without article body content", () => {
+    const starterNotebook = createStarterNotebook();
+    const research = starterNotebook.sections.find(
+      (section) => section.title === "Research"
+    );
+
+    if (research === undefined) {
+      throw new Error("Expected seeded Research Section.");
+    }
+
+    const notebookWithPage = addBlankPage(
+      starterNotebook,
+      research.id,
+      "page_research"
+    );
+    const notebookWithLinkCard = addLinkCardCanvasItem(
+      notebookWithPage,
+      "page_research",
+      "canvas_item_link_card",
+      "https://example.com/system-design",
+      "Queue for later distributed cache notes",
+      ["cache", "reading"]
+    );
+    const index = buildLocalIndex(notebookWithLinkCard);
+
+    expect(index.map((entry) => entry.id)).toEqual([
+      "page:page_research",
+      "link-card:canvas_item_link_card"
+    ]);
+    expect(searchLocalIndex(index, "cache")).toEqual([
+      expect.objectContaining({
+        id: "link-card:canvas_item_link_card",
+        canvasItemId: "canvas_item_link_card",
+        sourceLabel: "Link Card",
+        matchedTags: ["cache"],
+        snippet: expect.stringContaining("distributed cache notes")
+      })
+    ]);
+    expect(searchLocalIndex(index, "article body")).toEqual([]);
   });
 });

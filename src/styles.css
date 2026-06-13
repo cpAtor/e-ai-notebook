@@ -21,7 +21,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -39,7 +40,8 @@ button:hover {
   background: #2d3a58;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   border: 1px solid #d1c8b5;
   border-radius: 0.8rem;
@@ -48,7 +50,13 @@ input {
   padding: 0.85rem 1rem;
 }
 
-input:focus {
+textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus {
   border-color: #5468ff;
   outline: 3px solid rgba(84, 104, 255, 0.18);
 }
@@ -161,7 +169,9 @@ input:focus {
 
 .add-section-form label,
 .section-row label,
-.search-field {
+.search-field,
+.link-card-form label,
+.link-card-list label {
   color: #4d5871;
   font-size: 0.88rem;
   font-weight: 800;
@@ -264,8 +274,10 @@ input:focus {
 .page-canvas p,
 .search-result span,
 .search-result p,
+.link-card-panel p,
 .text-item-tags p,
-.text-item-tags label {
+.text-item-tags label,
+.link-card-list label {
   color: #4d5871;
 }
 
@@ -290,6 +302,54 @@ input:focus {
   border: 1px solid rgba(23, 32, 51, 0.14);
   border-radius: 1rem;
   margin: 1rem 0;
+}
+
+.link-card-panel {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: #fffdf7;
+  margin: 1rem 0;
+  padding: 1rem;
+}
+
+.link-card-panel h4,
+.link-card-panel p {
+  margin: 0;
+}
+
+.link-card-form,
+.link-card-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.link-card-form label,
+.link-card-list label {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.link-card-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.link-card-list li {
+  display: grid;
+  gap: 0.65rem;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 0.85rem;
+  background: #ffffff;
+  padding: 0.85rem;
+}
+
+.link-card-list a {
+  color: #314ee8;
+  overflow-wrap: anywhere;
+  font-weight: 800;
 }
 
 .text-item-tags {

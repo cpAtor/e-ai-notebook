@@ -56,10 +56,10 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
       tags: [],
     };
 
-    const textEntries = notebook.canvasItems
+    const itemEntries = notebook.canvasItems
       .filter((canvasItem) => canvasItem.pageId === page.id)
       .map((canvasItem): LocalIndexEntry => ({
-        id: `text:${canvasItem.id}`,
+        id: `${canvasItem.type}:${canvasItem.id}`,
         notebookTitle: notebook.title,
         sectionId: section.id,
         sectionTitle: section.title,
@@ -71,12 +71,16 @@ export const buildLocalIndex = (notebook: Notebook): readonly LocalIndexEntry[] 
             (region) =>
               region.pageId === page.id && region.canvasItemId === canvasItem.id
           ) ?? null,
-        searchableText: `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`,
-        sourceLabel: "Text Canvas Item",
+        searchableText:
+          canvasItem.type === "text"
+            ? `${pagePathText} ${canvasItem.text} ${canvasItem.tags.join(" ")}`
+            : `${pagePathText} ${canvasItem.url} ${canvasItem.note} ${canvasItem.tags.join(" ")}`,
+        sourceLabel:
+          canvasItem.type === "text" ? "Text Canvas Item" : "Link Card",
         tags: canvasItem.tags,
       }));
 
-    return [pageEntry, ...textEntries];
+    return [pageEntry, ...itemEntries];
   });
 
 export const searchLocalIndex = (

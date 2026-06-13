@@ -22,13 +22,16 @@ import {
   type SearchResult
 } from "./domain/localIndex";
 import {
+  addLinkCardCanvasItem,
   addBlankPage,
   addSection,
   type CanvasItemId,
+  createCanvasItemId,
   createPageId,
   createSectionId,
   getPage,
   getSection,
+  type LinkCardCanvasItem,
   Notebook,
   Page,
   PageId,
@@ -37,6 +40,8 @@ import {
   removeSection,
   Section,
   SectionId,
+  type TextCanvasItem,
+  updateLinkCardCanvasItemTags,
   updateTextCanvasItemTags
 } from "./domain/notebook";
 import {
@@ -269,6 +274,37 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
+  const handleLinkCardAdd = (
+    pageId: PageId,
+    url: string,
+    note: string,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      addLinkCardCanvasItem(
+        currentNotebook,
+        pageId,
+        createCanvasItemId(),
+        url,
+        note,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
+  const handleLinkCardTagsChange = (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => {
+    updateNotebook((currentNotebook) =>
+      updateLinkCardCanvasItemTags(
+        currentNotebook,
+        canvasItemId,
+        tagsFromDraft(tagDraft)
+      )
+    );
+  };
+
   const updateNotebook = (updater: (currentNotebook: Notebook) => Notebook) => {
     if (notebook === null) {
       return;
@@ -415,6 +451,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             notebook={notebook}
             highlightedCanvasItemId={highlightedCanvasItemId}
             onNotebookOpen={handleNotebookOpen}
+            onLinkCardAdd={handleLinkCardAdd}
+            onLinkCardTagsChange={handleLinkCardTagsChange}
             onPageTextCanvasChange={handlePageTextCanvasChange}
             onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
           />
@@ -513,6 +551,16 @@ interface ActivePageViewProps {
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onNotebookOpen: () => void;
+  readonly onLinkCardAdd: (
+    pageId: PageId,
+    url: string,
+    note: string,
+    tagDraft: string
+  ) => void;
+  readonly onLinkCardTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTextCanvasSnapshot
@@ -528,6 +576,8 @@ const ActivePageView = ({
   notebook,
   highlightedCanvasItemId,
   onNotebookOpen,
+  onLinkCardAdd,
+  onLinkCardTagsChange,
   onPageTextCanvasChange,
   onTextCanvasItemTagsChange
 }: ActivePageViewProps) => {
@@ -570,6 +620,12 @@ const ActivePageView = ({
         Use tldraw text shapes for rough interview-prep work. Text Canvas Items
         autosave with app-owned Canvas Regions and reload at the same location.
       </p>
+      <PageLinkCards
+        page={activePage.page}
+        notebook={notebook}
+        onLinkCardAdd={onLinkCardAdd}
+        onLinkCardTagsChange={onLinkCardTagsChange}
+      />
       <PageTextCanvas
         page={activePage.page}
         notebook={notebook}
@@ -607,7 +663,11 @@ const PageTextCanvas = ({
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
   const initialTextItems = useMemo(
-    () => notebook.canvasItems.filter((canvasItem) => canvasItem.pageId === page.id),
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is TextCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "text"
+      ),
     [notebook.canvasItems, page.id]
   );
   const initialRegions = useMemo(
@@ -710,7 +770,7 @@ const PageTextCanvas = ({
 };
 
 interface TextCanvasItemTagsProps {
-  readonly pageTextItems: readonly Notebook["canvasItems"][number][];
+  readonly pageTextItems: readonly TextCanvasItem[];
   readonly onTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
 }
 
@@ -757,6 +817,115 @@ const TextCanvasItemTags = ({
   );
 };
 
+interface PageLinkCardsProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly onLinkCardAdd: (
+    pageId: PageId,
+    url: string,
+    note: string,
+    tagDraft: string
+  ) => void;
+  readonly onLinkCardTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
+}
+
+const PageLinkCards = ({
+  page,
+  notebook,
+  onLinkCardAdd,
+  onLinkCardTagsChange
+}: PageLinkCardsProps) => {
+  const [url, setUrl] = useState("");
+  const [note, setNote] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const pageLinkCards = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is LinkCardCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "link-card"
+      ),
+    [notebook.canvasItems, page.id]
+  );
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onLinkCardAdd(page.id, url, note, tagDraft);
+    setUrl("");
+    setNote("");
+    setTagDraft("");
+  };
+
+  return (
+    <section className="link-card-panel" aria-labelledby="link-cards-title">
+      <div>
+        <h4 id="link-cards-title">Link Cards</h4>
+        <p>
+          Paste a URL with optional notes and Tags. The Notebook stores only the
+          URL and your notes; it does not crawl or clip article content.
+        </p>
+      </div>
+      <form className="link-card-form" onSubmit={handleSubmit}>
+        <label htmlFor="link-card-url">
+          Link Card URL
+          <input
+            id="link-card-url"
+            type="url"
+            required
+            placeholder="https://example.com/problem"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+          />
+        </label>
+        <label htmlFor="link-card-note">
+          Optional notes
+          <textarea
+            id="link-card-note"
+            placeholder="Why this URL matters for this Page"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </label>
+        <label htmlFor="link-card-tags">
+          Optional Tags
+          <input
+            id="link-card-tags"
+            placeholder="e.g. graphs, research"
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+          />
+        </label>
+        <button type="submit">Add Link Card</button>
+      </form>
+      {pageLinkCards.length > 0 ? (
+        <ul className="link-card-list" aria-label="Link Cards on this Page">
+          {pageLinkCards.map((linkCard) => (
+            <li key={linkCard.id}>
+              <a href={linkCard.url} rel="noreferrer" target="_blank">
+                {linkCard.url}
+              </a>
+              {linkCard.note.length > 0 ? <p>{linkCard.note}</p> : null}
+              <label htmlFor={`${linkCard.id}-tags`}>
+                Tags for {linkCard.url}
+                <input
+                  id={`${linkCard.id}-tags`}
+                  defaultValue={linkCard.tags.join(", ")}
+                  placeholder="e.g. graphs, research"
+                  onChange={(event) =>
+                    onLinkCardTagsChange(linkCard.id, event.target.value)
+                  }
+                />
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+};
+
 interface LocalSearchProps {
   readonly query: string;
   readonly results: readonly SearchResult[];
@@ -781,7 +950,7 @@ const LocalSearch = ({
       </p>
     </div>
     <label className="search-field" htmlFor="notebook-search">
-      Search text Canvas Items, Tags, Page titles, and Section paths
+      Search Canvas Items, Tags, Page titles, and Section paths
       <input
         id="notebook-search"
         value={query}

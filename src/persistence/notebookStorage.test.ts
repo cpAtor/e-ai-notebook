@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { addBlankPage, createStarterNotebook } from "../domain/notebook";
+import {
+  addBlankPage,
+  addLinkCardCanvasItem,
+  createStarterNotebook
+} from "../domain/notebook";
 import {
   createNotebookStore,
   deleteNotebookDatabase,
@@ -68,6 +72,32 @@ describe("Notebook storage", () => {
 
     await store.saveNotebook(notebook);
     await expect(store.loadNotebook()).resolves.toEqual(notebook);
+    store.close();
+  });
+
+  it("persists Link Card source data through the versioned Notebook schema", async () => {
+    const store = createNotebookStore(databaseName);
+    const notebook = await store.loadNotebook();
+    const research = notebook.sections.find((section) => section.title === "Research");
+
+    if (research === undefined) {
+      throw new Error("Expected seeded Research Section.");
+    }
+
+    const notebookWithPage = addBlankPage(notebook, research.id, "page_research");
+    const notebookWithLinkCard = addLinkCardCanvasItem(
+      notebookWithPage,
+      "page_research",
+      "canvas_item_link_card",
+      "https://example.com/system-design",
+      "Distributed cache reference",
+      ["cache"]
+    );
+
+    await store.saveNotebook(notebookWithLinkCard);
+
+    await expect(store.loadNotebook()).resolves.toEqual(notebookWithLinkCard);
+    expect(() => notebookSchemaV2.parse(notebookWithLinkCard)).not.toThrow();
     store.close();
   });
 });

@@ -46,13 +46,23 @@ export const notebookSchemaV1 = z.object({
 export const notebookSchemaV2 = notebookSchemaV1.extend({
   canvasItems: z
     .array(
-      z.object({
-        id: canvasItemIdSchema,
-        pageId: pageIdSchema,
-        type: z.literal("text"),
-        text: z.string(),
-        tags: z.array(z.string()).default([])
-      })
+      z.discriminatedUnion("type", [
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
+          type: z.literal("text"),
+          text: z.string(),
+          tags: z.array(z.string()).default([])
+        }),
+        z.object({
+          id: canvasItemIdSchema,
+          pageId: pageIdSchema,
+          type: z.literal("link-card"),
+          url: z.string().url(),
+          note: z.string().default(""),
+          tags: z.array(z.string()).default([])
+        })
+      ])
     )
     .default([]),
   canvasRegions: z
