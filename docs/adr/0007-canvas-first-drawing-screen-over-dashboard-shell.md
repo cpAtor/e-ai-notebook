@@ -1,0 +1,3 @@
+# Canvas-first Drawing Screen over dashboard shell
+
+The notebook will default to a full-screen Drawing Screen rather than a dashboard or management landing page, including for new users through automatic creation of an Inbox Section and Default Page. Notebook management, search, import/export, settings, shortcuts, metadata editing, and AI affordances should be exposed through unobtrusive canvas-native controls, drawers, palettes, modals, toasts, or item context instead of permanent cards and forms around the canvas, because the core product experience is rough-work capture on an infinite canvas.

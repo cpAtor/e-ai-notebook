@@ -16,6 +16,10 @@ _Avoid_: Workspace
 A portable backup of a Notebook that can be imported later without requiring sync.
 _Avoid_: Cloud sync
 
+**Canvas Toast**:
+A temporary corner message for background feedback such as saving, saved, export ready, import complete, or retryable failures.
+_Avoid_: Status bar, persistent banner, section card
+
 **Section**:
 A named grouping inside a Notebook, such as DSA, System Design, or Research.
 _Avoid_: Folder, workspace
@@ -23,6 +27,46 @@ _Avoid_: Folder, workspace
 **Page**:
 An infinite-canvas document inside a Section, centered on a topic, problem, prompt, or captured research item.
 _Avoid_: Document, note
+
+**Default Page**:
+The first blank Page created automatically so a new user can begin on the Drawing Screen without setup.
+_Avoid_: Onboarding document, starter form
+
+**Empty Canvas Prompts**:
+Temporary choices shown on an unused Default Page to help the user start capturing material; they disappear once the user creates Canvas Items.
+_Avoid_: Feature cards, onboarding wizard, dashboard
+
+**Drawing Screen**:
+The default product surface for both new and returning users: a Page opened directly as a full-screen infinite-canvas thinking space.
+_Avoid_: Dashboard, landing page, workspace
+
+**Canvas Visual Style**:
+An Excalidraw-inspired visual feel for the Drawing Screen, prioritizing readable, spacious canvas typography over dashboard-style web UI.
+_Avoid_: Web dashboard, form-heavy app shell
+
+**Canvas Note Font**:
+Nunito, used as the preferred readable font for normal note-taking on the canvas.
+_Avoid_: Hand-drawn default, dashboard UI font
+
+**Notebook Management Screen**:
+A secondary surface for heavier organization and maintenance tasks across Sections, Pages, exports, imports, and recovery.
+_Avoid_: Workspace, home page, primary screen
+
+**Notebook Drawer**:
+A hidden-by-default Drawing Screen drawer with a color-coded, icon-supported tree view for organizing Notebook material.
+_Avoid_: Always-visible sidebar, page browser, dashboard
+
+**Page Switcher**:
+An unobtrusive Drawing Screen control for moving between Pages without leaving the canvas-first flow.
+_Avoid_: Page browser, document list, sidebar
+
+**Command Palette**:
+A Drawing Screen overlay for invoking notebook actions such as search, page switching, shortcuts, settings, and management commands without adding persistent page chrome.
+_Avoid_: Settings page, feature panel, toolbar overflow
+
+**Canvas Modal**:
+A temporary Drawing Screen dialog for focused secondary tasks such as shortcuts, settings, import, export, or confirmations.
+_Avoid_: Settings route, management page, persistent panel
 
 **Page Type**:
 Optional or inferred metadata describing the kind of preparation material on a Page; it must not be required during capture.
@@ -36,9 +80,21 @@ _Avoid_: Required template
 User-created or captured material placed on a Page, initially limited to text, freehand drawing, image or screenshot paste, links, and code blocks.
 _Avoid_: Block, object, widget
 
+**Hover Metadata**:
+Lightweight metadata shown only when the user hovers or focuses a Canvas Item, used for quick context without interrupting capture.
+_Avoid_: Always-visible metadata, metadata panel
+
+**Item Inspector**:
+An optional sidebar opened from a Canvas Item when the user chooses to edit metadata such as tags, captions, notes, or generated summaries.
+_Avoid_: Permanent form, below-canvas editor
+
 **Code Block**:
-A non-runnable Canvas Item for storing searchable code snippets, pseudocode, or solution drafts.
+A non-runnable Canvas Item for storing searchable Python-first interview solution drafts, pseudocode, or code snippets.
 _Avoid_: Cell, runner, judge
+
+**Code Editing Split**:
+A temporary Drawing Screen split view for editing a Code Block with Python-focused editor assistance while keeping the canvas visible.
+_Avoid_: Below-canvas code form, separate IDE, runnable notebook cell
 
 **Link Card**:
 A Canvas Item for a pasted URL with optional notes and tags, without treating the linked page as captured notebook content.
@@ -83,6 +139,10 @@ _Avoid_: Local index, required metadata
 **Notebook Assistant**:
 The AI chat experience that answers from notebook material, summarizes pages or regions, finds related notes, and cites Canvas Regions.
 _Avoid_: General interview coach, autonomous agent
+
+**Assistant Bubble**:
+An unobtrusive, dismissible Drawing Screen affordance for opening the Notebook Assistant without making AI the main surface.
+_Avoid_: Always-open chat panel, primary layout column
 
 **Private by Default**:
 A product promise that interview preparation material is treated as personal and not shared or synced without the user's intent.
