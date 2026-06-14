@@ -52,18 +52,31 @@ vi.mock("tldraw", async () => {
 
   return {
     iconTypes: [],
+    DefaultStylePanel: () =>
+      React.createElement("div", { "data-testid": "tldraw-default-style-panel" }),
+    useCanApplySelectionAction: vi.fn(() => false),
     Tldraw: ({
-      onMount
+      onMount,
+      components
     }: {
       readonly onMount?: (
         editor: ReturnType<typeof createMockTldrawEditor>
       ) => void | (() => void);
+      readonly components?: {
+        readonly StylePanel?: React.ComponentType<object>;
+      };
     }) => {
       React.useEffect(() => onMount?.(createMockTldrawEditor()), [onMount]);
 
-      return React.createElement("div", {
-        "aria-label": "Mock tldraw editor"
-      });
+      const StylePanelComponent = components?.StylePanel;
+
+      return React.createElement(
+        "div",
+        { "aria-label": "Mock tldraw editor" },
+        StylePanelComponent
+          ? React.createElement(StylePanelComponent, {})
+          : null
+      );
     }
   };
 });
