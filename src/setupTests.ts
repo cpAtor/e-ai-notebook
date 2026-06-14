@@ -52,9 +52,23 @@ vi.mock("tldraw", async () => {
 
   return {
     iconTypes: [],
+    DefaultMainMenu: ({ children }: { readonly children?: React.ReactNode }) =>
+      React.createElement(
+        "div",
+        { "data-testid": "tldraw-main-menu" },
+        React.createElement("button", { type: "button" }, "Menu"),
+        children
+      ),
+    DefaultMainMenuContent: () =>
+      React.createElement("div", { "data-testid": "tldraw-default-main-menu-content" }),
     DefaultStylePanel: () =>
       React.createElement("div", { "data-testid": "tldraw-default-style-panel" }),
     useCanApplySelectionAction: vi.fn(() => false),
+    useEditor: () => ({
+      menus: {
+        clearOpenMenus: vi.fn()
+      }
+    }),
     Tldraw: ({
       onMount,
       components
@@ -80,9 +94,11 @@ vi.mock("tldraw", async () => {
         MainMenuComponent
           ? React.createElement(MainMenuComponent, {})
           : null,
-        PageMenuComponent
+        PageMenuComponent === null
+          ? null
+          : PageMenuComponent
           ? React.createElement(PageMenuComponent, {})
-          : null,
+          : React.createElement("button", { type: "button" }, "Page 1"),
         StylePanelComponent
           ? React.createElement(StylePanelComponent, {})
           : null

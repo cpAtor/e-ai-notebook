@@ -64,7 +64,7 @@ describe("App", () => {
 
   // Helper: open the Canvas Lens menu and click an action inside it.
   const openMenuAndClick = async (user: ReturnType<typeof userEvent.setup>, itemName: string) => {
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: itemName }));
   };
 
@@ -78,10 +78,10 @@ describe("App", () => {
     expect(window.location.pathname).toMatch(
       /^\/sections\/section_inbox\/pages\/page_default$/
     );
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Default Page" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
     // Privacy badge lives in the Canvas Lens menu (not the persistent HUD).
-    expect(screen.getByRole("button", { name: "Open notebook menu" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Menu" })).toBeInTheDocument();
   });
 
   it("shows Notebook Management Screen with Inbox Section when navigating back", async () => {
@@ -108,7 +108,7 @@ describe("App", () => {
     const user = userEvent.setup();
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(await screen.findByRole("dialog", { name: "Settings" })).toContainElement(
@@ -116,18 +116,19 @@ describe("App", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Close Settings" }));
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: "Light" }));
 
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("notebook_theme")).toBe("light");
 
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+    const exportDialog = await screen.findByRole("dialog", { name: "Export Notebook Backup" });
+    expect(exportDialog).toBeInTheDocument();
     expect(
-      await screen.findByRole("dialog", { name: "Export Notebook Backup" })
+      within(exportDialog).getByRole("button", { name: "Export Notebook Backup" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export Notebook Backup" })).toBeInTheDocument();
   });
 
   it("opens the command palette and runs notebook actions", async () => {
@@ -466,7 +467,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
     expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
   });
 
@@ -1195,7 +1196,7 @@ describe("App", () => {
     const user = userEvent.setup();
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
     const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
@@ -1217,7 +1218,7 @@ describe("App", () => {
     await screen.findByTestId("tldraw-page-canvas");
     expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Menu" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
     const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });

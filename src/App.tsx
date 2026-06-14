@@ -13,10 +13,13 @@ import {
   useState
 } from "react";
 import {
+  DefaultMainMenu,
+  DefaultMainMenuContent,
   DefaultStylePanel,
   Tldraw,
   iconTypes,
   useCanApplySelectionAction,
+  useEditor,
   type TLComponents,
   type TLUiAssetUrlOverrides,
   type TLUiStylePanelProps
@@ -1323,7 +1326,6 @@ type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspect
 
 type ActiveSurface =
   | null
-  | "menu"
   | "drawer"
   | "search"
   | "command-palette"
@@ -1351,149 +1353,112 @@ const useDrawingScreenCtx = (): DrawingScreenContextValue => {
   return ctx;
 };
 
-// Unified canvas-native navigation bar: replaces tldraw's MainMenu slot with a single
-// glass-pill group containing the notebook hamburger menu and the Section › Page breadcrumb.
-// PageMenu is set to null so this one component owns the entire top-left nav group.
-const NotebookMainMenu = () => {
+interface NotebookMenuActionProps {
+  readonly children: ReactNode;
+  readonly onSelect: () => void;
+}
+
+const NotebookMenuAction = ({ children, onSelect }: NotebookMenuActionProps) => (
+  <button
+    type="button"
+    className="tlui-button tlui-button__menu notebook-menu-actions__item"
+    onClick={onSelect}
+  >
+    <span className="tlui-button__label">{children}</span>
+  </button>
+);
+
+const NotebookMainMenuContent = () => {
   const {
-    section,
-    page,
-    activeSurface,
     theme,
     setActiveSurface,
     openCanvasModal,
     onNotebookOpen,
     onThemeChange
   } = useDrawingScreenCtx();
-  const showMenu = activeSurface === "menu";
-  const isDrawerOpen = activeSurface === "drawer";
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!showMenu) {
-      return;
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setActiveSurface(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [showMenu, setActiveSurface]);
+  const editor = useEditor();
+  const selectNotebookAction = (action: () => void) => {
+    editor.menus.clearOpenMenus();
+    action();
+  };
 
   return (
-    <div className="notebook-nav-group" ref={menuRef}>
-      <h2 className="sr-only">{page.title}</h2>
-      <button
-        type="button"
-        className="notebook-nav-group__hamburger"
-        aria-label="Open notebook menu"
-        aria-expanded={showMenu}
-        aria-haspopup="menu"
-        onClick={() => setActiveSurface(showMenu ? null : "menu")}
-      >
-        ≡
-      </button>
-      <button
-        type="button"
-        className="notebook-nav-group__breadcrumb"
-        aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
-        aria-expanded={isDrawerOpen}
-        onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
-      >
-        <span className="drawing-screen__section-name">{section.title}</span>
-        <span className="drawing-screen__page-title">{page.title}</span>
-      </button>
-      {showMenu ? (
-        <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
-          <div className="hamburger-menu__section">
-            <span className="hamburger-menu__label">Theme</span>
-            <div className="theme-picker" role="group" aria-label="Theme picker">
-              {(["system", "light", "dark"] as const).map((themeOption) => (
-                <button
-                  key={themeOption}
-                  type="button"
-                  className={
-                    theme === themeOption
-                      ? "theme-picker__option theme-picker__option--active"
-                      : "theme-picker__option"
-                  }
-                  aria-pressed={theme === themeOption}
-                  onClick={() => {
-                    onThemeChange(themeOption);
-                    setActiveSurface(null);
-                  }}
-                >
-                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <hr className="hamburger-menu__divider" />
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => setActiveSurface("search")}
-          >
+    <>
+      <DefaultMainMenuContent />
+      <div className="notebook-menu-actions" role="group" aria-label="Notebook actions">
+        <div className="notebook-menu-actions__section">
+          <span className="notebook-menu-actions__label">Notebook</span>
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => setActiveSurface("search"))}>
             Search Notebook
-          </button>
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => {
-              setActiveSurface(null);
-              onNotebookOpen();
-            }}
+          </NotebookMenuAction>
+          <NotebookMenuAction
+            onSelect={() =>
+              selectNotebookAction(() => {
+                setActiveSurface(null);
+                onNotebookOpen();
+              })
+            }
           >
             Notebook Management
-          </button>
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => openCanvasModal("inspector")}
-          >
+          </NotebookMenuAction>
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("inspector"))}>
             Canvas Items
-          </button>
-          <hr className="hamburger-menu__divider" />
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => openCanvasModal("shortcuts")}
-          >
-            Keyboard Shortcuts
-          </button>
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => openCanvasModal("settings")}
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => openCanvasModal("export")}
-          >
-            Export Notebook Backup
-          </button>
-          <button
-            type="button"
-            className="hamburger-menu__item"
-            onClick={() => openCanvasModal("import")}
-          >
-            Import Notebook Export
-          </button>
-          <div className="hamburger-menu__privacy" aria-label="Notebook privacy mode">
-            🔒 Private by Default
+          </NotebookMenuAction>
+        </div>
+        <div className="notebook-menu-actions__section">
+          <span className="notebook-menu-actions__label">Theme</span>
+          <div role="group" aria-label="Theme picker">
+            {(["system", "light", "dark"] as const).map((themeOption) => (
+              <button
+                key={themeOption}
+                type="button"
+                className={
+                  theme === themeOption
+                    ? "tlui-button tlui-button__menu notebook-menu-actions__item notebook-menu-actions__item--active"
+                    : "tlui-button tlui-button__menu notebook-menu-actions__item"
+                }
+                aria-pressed={theme === themeOption}
+                onClick={() =>
+                  selectNotebookAction(() => {
+                    onThemeChange(themeOption);
+                    setActiveSurface(null);
+                  })
+                }
+              >
+                <span className="tlui-button__label">
+                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
-      ) : null}
-    </div>
+        <div className="notebook-menu-actions__section">
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("shortcuts"))}>
+            Keyboard Shortcuts
+          </NotebookMenuAction>
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("settings"))}>
+            Settings
+          </NotebookMenuAction>
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("export"))}>
+            Export Notebook Backup
+          </NotebookMenuAction>
+          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("import"))}>
+            Import Notebook Export
+          </NotebookMenuAction>
+          <div className="notebook-menu-actions__privacy" aria-label="Notebook privacy mode">
+            Private by Default
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
+
+const NotebookMainMenu = () => (
+  <DefaultMainMenu>
+    <NotebookMainMenuContent />
+  </DefaultMainMenu>
+);
 
 interface DrawingScreenProps {
   readonly activePage: ActivePage;
@@ -1621,13 +1586,9 @@ const DrawingScreen = ({
 
   const closeCanvasModal = () => setActiveSurface(null);
 
-  // tldraw component overrides — NotebookMainMenu owns the entire top-left nav group
-  // (hamburger + breadcrumb in one unified pill); PageMenu is nulled out so tldraw's
-  // page-switcher slot is gone and there is no competing chrome.
   const tlComponents = useMemo((): TLComponents => ({
     StylePanel: SelectionOnlyStylePanel,
     MainMenu: NotebookMainMenu,
-    PageMenu: null,
   }), []);
 
   if (activePage.kind === "invalid-section") {
@@ -1756,6 +1717,7 @@ const DrawingScreen = ({
         <h1 id="ds-notebook-title" className="drawing-screen__sr-title">
           {notebook.title}
         </h1>
+        <h2 className="sr-only">{page.title}</h2>
         <div className="drawing-screen__body">
           <div className="drawing-screen__canvas-area">
             <PageTextCanvas
