@@ -10,7 +10,15 @@ import {
   useRef,
   useState
 } from "react";
-import { Tldraw, iconTypes, type TLUiAssetUrlOverrides } from "tldraw";
+import {
+  DefaultStylePanel,
+  Tldraw,
+  iconTypes,
+  useCanApplySelectionAction,
+  type TLComponents,
+  type TLUiAssetUrlOverrides,
+  type TLUiStylePanelProps
+} from "tldraw";
 import "tldraw/tldraw.css";
 import {
   canvasItemIdForShape,
@@ -2169,6 +2177,16 @@ const SearchOverlay = ({
   );
 };
 
+const SelectionOnlyStylePanel = (props: TLUiStylePanelProps) => {
+  const hasSelection = useCanApplySelectionAction();
+  if (!hasSelection) return null;
+  return <DefaultStylePanel {...props} />;
+};
+
+const PAGE_TEXT_CANVAS_COMPONENTS: TLComponents = {
+  StylePanel: SelectionOnlyStylePanel
+};
+
 interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
@@ -2318,6 +2336,7 @@ const PageTextCanvas = ({
       <Tldraw
         assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
         autoFocus
+        components={PAGE_TEXT_CANVAS_COMPONENTS}
         initialState="text"
         onMount={handleMount}
       />
