@@ -1389,6 +1389,7 @@ const DrawingScreen = ({
   const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
   const [showPanels, setShowPanels] = useState(false);
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
@@ -1427,6 +1428,7 @@ const DrawingScreen = ({
         setShowHamburgerMenu(false);
         setActiveModal(null);
         setIsCommandPaletteOpen(false);
+        setIsDrawerOpen(false);
       }
     };
 
@@ -1438,6 +1440,7 @@ const DrawingScreen = ({
   const openCanvasModal = (modal: CanvasModalKind) => {
     setShowHamburgerMenu(false);
     setIsCommandPaletteOpen(false);
+    setIsDrawerOpen(false);
     setCommandQuery("");
     setActiveCommandIndex(0);
     setActiveModal(modal);
@@ -1490,6 +1493,13 @@ const DrawingScreen = ({
     (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
   );
   const commandActions: readonly CommandAction[] = [
+    {
+      id: "toggle-drawer",
+      label: isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer",
+      description: "Browse Sections and Pages",
+      keywords: "drawer pages sections navigate browse",
+      run: () => setIsDrawerOpen((open) => !open)
+    },
     {
       id: "search-notebook",
       label: "Search Notebook",
@@ -1624,6 +1634,15 @@ const DrawingScreen = ({
         </div>
         <button
           type="button"
+          className="drawing-screen__drawer-btn"
+          aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+          aria-expanded={isDrawerOpen}
+          onClick={() => setIsDrawerOpen((open) => !open)}
+        >
+          Pages
+        </button>
+        <button
+          type="button"
           className="drawing-screen__notebook-btn"
           onClick={onNotebookOpen}
         >
@@ -1672,6 +1691,20 @@ const DrawingScreen = ({
             onPageTextCanvasChange={onPageTextCanvasChange}
           />
         </div>
+        <NotebookDrawer
+          isOpen={isDrawerOpen}
+          notebook={notebook}
+          currentPageId={page.id}
+          onPageOpen={(sectionId, pageId) => {
+            setIsDrawerOpen(false);
+            onPageOpen(sectionId, pageId);
+          }}
+          onPageCreate={(sectionId) => {
+            setIsDrawerOpen(false);
+            onPageCreate(sectionId);
+          }}
+          onClose={() => setIsDrawerOpen(false)}
+        />
         {showPanels ? (
           <div className="drawing-screen__panels">
             <TextCanvasItemTags
@@ -1752,6 +1785,122 @@ const DrawingScreen = ({
     </main>
   );
 };
+
+// Section colors for visual differentiation in the Notebook Drawer.
+const SECTION_COLORS = [
+  "#6952c7",
+  "#1a7a4c",
+  "#c75219",
+  "#2152b5",
+  "#8a4a9e",
+  "#7a5219"
+] as const;
+
+interface NotebookDrawerProps {
+  readonly isOpen: boolean;
+  readonly notebook: Notebook;
+  readonly currentPageId: PageId;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
+  readonly onClose: () => void;
+}
+
+const NotebookDrawer = ({
+  isOpen,
+  notebook,
+  currentPageId,
+  onPageOpen,
+  onPageCreate,
+  onClose
+}: NotebookDrawerProps) => (
+  <>
+    {isOpen ? (
+      <div
+        className="notebook-drawer-backdrop"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+    ) : null}
+    <aside
+      className={isOpen ? "notebook-drawer notebook-drawer--open" : "notebook-drawer"}
+      aria-label="Notebook Drawer"
+      aria-hidden={!isOpen}
+    >
+      <div className="notebook-drawer__header">
+        <span className="notebook-drawer__title">Pages</span>
+        <button
+          type="button"
+          className="notebook-drawer__close"
+          aria-label="Close Notebook Drawer"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      {isOpen ? (
+        <nav className="notebook-drawer__tree" aria-label="Sections and Pages">
+          {notebook.sections.length === 0 ? (
+            <p className="notebook-drawer__empty">No Sections yet.</p>
+          ) : (
+            notebook.sections.map((section, index) => {
+              const sectionColor = SECTION_COLORS[index % SECTION_COLORS.length];
+              const sectionPages = notebook.pages.filter(
+                (page) => page.sectionId === section.id
+              );
+
+              return (
+                <div key={section.id} className="notebook-drawer__section">
+                  <div
+                    className="notebook-drawer__section-header"
+                    style={{ borderLeftColor: sectionColor }}
+                  >
+                    <span
+                      className="notebook-drawer__section-name"
+                      style={{ color: sectionColor }}
+                    >
+                      {section.title}
+                    </span>
+                    <button
+                      type="button"
+                      className="notebook-drawer__new-page-btn"
+                      aria-label={`New Page in ${section.title}`}
+                      title={`New Page in ${section.title}`}
+                      onClick={() => onPageCreate(section.id)}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {sectionPages.length === 0 ? (
+                    <p className="notebook-drawer__no-pages">No Pages yet</p>
+                  ) : (
+                    <ul className="notebook-drawer__pages">
+                      {sectionPages.map((page) => (
+                        <li key={page.id}>
+                          <button
+                            type="button"
+                            className={
+                              page.id === currentPageId
+                                ? "notebook-drawer__page-btn notebook-drawer__page-btn--active"
+                                : "notebook-drawer__page-btn"
+                            }
+                            aria-current={page.id === currentPageId ? "page" : undefined}
+                            onClick={() => onPageOpen(page.sectionId, page.id)}
+                          >
+                            {page.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </nav>
+      ) : null}
+    </aside>
+  </>
+);
 
 interface DrawingScreenSaveStatusProps {
   readonly status: SaveStatus;

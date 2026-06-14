@@ -1141,3 +1141,237 @@ html[data-theme="dark"] .link-card-list a {
 .shortcuts-table th {
   width: 34%;
 }
+
+/* ── Notebook Drawer ─────────────────────────────────────────────────── */
+
+.drawing-screen__drawer-btn {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  background: #e8e4f5;
+  color: #2d1a7a;
+}
+
+.drawing-screen__drawer-btn:hover {
+  background: #d5ceee;
+}
+
+.notebook-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  background: rgba(12, 16, 26, 0.25);
+}
+
+.notebook-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 30;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(23, 32, 51, 0.12);
+  background: #fffdf7;
+  box-shadow: 4px 0 24px rgba(23, 32, 51, 0.14);
+  transform: translateX(-100%);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.notebook-drawer--open {
+  transform: translateX(0);
+}
+
+.notebook-drawer__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  border-bottom: 1px solid rgba(23, 32, 51, 0.1);
+  background: rgba(255, 253, 247, 0.96);
+}
+
+.notebook-drawer__title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4d5871;
+}
+
+.notebook-drawer__close {
+  min-width: 2rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  color: #4d5871;
+}
+
+.notebook-drawer__close:hover {
+  background: rgba(23, 32, 51, 0.08);
+  color: #172033;
+}
+
+.notebook-drawer__tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0.5rem;
+}
+
+.notebook-drawer__empty,
+.notebook-drawer__no-pages {
+  margin: 0.5rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  color: #4d5871;
+  font-size: 0.82rem;
+}
+
+.notebook-drawer__section {
+  margin-bottom: 0.5rem;
+}
+
+.notebook-drawer__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.85rem;
+  border-left: 3px solid currentColor;
+  border-radius: 0 0.6rem 0.6rem 0;
+}
+
+.notebook-drawer__section-name {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.notebook-drawer__new-page-btn {
+  flex: 0 0 auto;
+  min-width: 1.8rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 700;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #4d5871;
+}
+
+.notebook-drawer__new-page-btn:hover {
+  background: rgba(23, 32, 51, 0.1);
+  color: #172033;
+}
+
+.notebook-drawer__pages {
+  display: grid;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0 0 0 1rem;
+}
+
+.notebook-drawer__page-btn {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: #172033;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 0.45rem 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebook-drawer__page-btn:hover {
+  background: rgba(23, 32, 51, 0.07);
+}
+
+.notebook-drawer__page-btn--active {
+  background: #e8e4f5;
+  color: #2d1a7a;
+  font-weight: 700;
+}
+
+.notebook-drawer__page-btn--active:hover {
+  background: #d5ceee;
+}
+
+/* Dark mode for Notebook Drawer */
+
+html[data-theme="dark"] .notebook-drawer {
+  border-color: rgba(232, 234, 240, 0.14);
+  background: #1e2438;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.38);
+}
+
+html[data-theme="dark"] .notebook-drawer__header {
+  border-color: rgba(232, 234, 240, 0.12);
+  background: rgba(30, 36, 56, 0.96);
+}
+
+html[data-theme="dark"] .notebook-drawer__title,
+html[data-theme="dark"] .notebook-drawer__empty,
+html[data-theme="dark"] .notebook-drawer__no-pages {
+  color: #c6cfde;
+}
+
+html[data-theme="dark"] .notebook-drawer__close {
+  background: transparent;
+  color: #c6cfde;
+}
+
+html[data-theme="dark"] .notebook-drawer__close:hover {
+  background: rgba(232, 234, 240, 0.1);
+  color: #e8eaf0;
+}
+
+html[data-theme="dark"] .notebook-drawer__new-page-btn {
+  background: transparent;
+  color: #c6cfde;
+}
+
+html[data-theme="dark"] .notebook-drawer__new-page-btn:hover {
+  background: rgba(232, 234, 240, 0.12);
+  color: #e8eaf0;
+}
+
+html[data-theme="dark"] .notebook-drawer__page-btn {
+  background: transparent;
+  color: #e8eaf0;
+}
+
+html[data-theme="dark"] .notebook-drawer__page-btn:hover {
+  background: rgba(232, 234, 240, 0.08);
+}
+
+html[data-theme="dark"] .notebook-drawer__page-btn--active {
+  background: #2d3550;
+  color: #c5bdf5;
+}
+
+html[data-theme="dark"] .notebook-drawer__page-btn--active:hover {
+  background: #3b4668;
+}
+
+html[data-theme="dark"] .drawing-screen__drawer-btn {
+  background: #2d3550;
+  color: #e8eaf0;
+}
+
+html[data-theme="dark"] .drawing-screen__drawer-btn:hover {
+  background: #3b4668;
+}
