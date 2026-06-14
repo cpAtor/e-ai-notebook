@@ -52,7 +52,6 @@ import {
   removeSection,
   Section,
   SectionId,
-  STARTER_DEFAULT_PAGE_ID,
   type TextCanvasItem,
   updateCodeBlockCanvasItem,
   updateDiagramCanvasItem,
@@ -85,14 +84,10 @@ const getStoredAiEnabled = (): boolean => {
 };
 
 type Theme = "system" | "light" | "dark";
+type EffectiveTheme = Exclude<Theme, "system">;
 
-const getSystemTheme = (): Exclude<Theme, "system"> => {
-  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
-  return "dark";
-};
+const getEffectiveTheme = (theme: Theme): EffectiveTheme =>
+  theme === "system" ? "dark" : theme;
 
 const getStoredTheme = (): Theme => {
   try {
@@ -113,7 +108,7 @@ const applyThemeToDocument = (theme: Theme) => {
     return;
   }
 
-  document.documentElement.dataset.theme = theme === "system" ? getSystemTheme() : theme;
+  document.documentElement.dataset.theme = getEffectiveTheme(theme);
 };
 
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
@@ -331,22 +326,6 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
       // Ignore storage errors while persisting theme preference.
     }
 
-    if (theme !== "system" || typeof window.matchMedia !== "function") {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = () => applyThemeToDocument("system");
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleChange);
-
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    }
-
-    mediaQuery.addListener(handleChange);
-
-    return () => mediaQuery.removeListener(handleChange);
   }, [theme]);
 
   const activePage = useMemo(() => {
@@ -1423,7 +1402,7 @@ const DrawingScreen = ({
   onSearchQueryChange,
   onSearchResultOpen
 }: DrawingScreenProps) => {
-  const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
+  const effectiveTheme = getEffectiveTheme(theme);
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
@@ -1536,10 +1515,7 @@ const DrawingScreen = ({
       </main>
     );
   }
-
   const { page, section } = activePage;
-  const pageCanvasItems = notebook.canvasItems.filter((item) => item.pageId === page.id);
-  const showEmptyPrompts = page.id === STARTER_DEFAULT_PAGE_ID && pageCanvasItems.length === 0;
   const pageTextItems = notebook.canvasItems.filter(
     (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
   );
@@ -1726,18 +1702,11 @@ const DrawingScreen = ({
       </header>
       <div className="drawing-screen__body">
         <div className="drawing-screen__canvas-area">
-          {showEmptyPrompts ? (
-            <EmptyCanvasPrompts
-              onTextTool={() => currentEditor?.setCurrentTool("text")}
-              onDrawTool={() => currentEditor?.setCurrentTool("draw")}
-                onSearchNotebook={() => setIsSearchOpen(true)}
-            />
-          ) : null}
           <PageTextCanvas
             page={page}
             notebook={notebook}
             highlightedCanvasItemId={highlightedCanvasItemId}
-            onEditorReady={setCurrentEditor}
+            theme={effectiveTheme}
             onPageTextCanvasChange={onPageTextCanvasChange}
           />
         </div>
@@ -2184,59 +2153,11 @@ const SearchOverlay = ({
   );
 };
 
-interface EmptyCanvasPromptsProps {
-  readonly onTextTool: () => void;
-  readonly onDrawTool: () => void;
-  readonly onSearchNotebook: () => void;
-}
-
-const EmptyCanvasPrompts = ({
-  onTextTool,
-  onDrawTool,
-  onSearchNotebook
-}: EmptyCanvasPromptsProps) => (
-  <div className="empty-canvas-prompts" aria-label="Empty Canvas Prompts">
-    <div className="empty-canvas-prompts__card">
-      <p className="empty-canvas-prompts__hint">
-        Start capturing rough interview-prep work
-      </p>
-      <div className="empty-canvas-prompts__actions">
-        <button
-          type="button"
-          className="empty-canvas-prompt-btn"
-          onClick={onTextTool}
-        >
-          Type a note
-        </button>
-        <button
-          type="button"
-          className="empty-canvas-prompt-btn"
-          onClick={onDrawTool}
-        >
-          Sketch
-        </button>
-        <span className="empty-canvas-prompt-hint">
-          Paste a screenshot or image, or use Canvas Items to add an Image Item
-        </span>
-        <span className="empty-canvas-prompt-hint">
-          Add a Link Card via Canvas Items in the header
-        </span>
-        <button
-          type="button"
-          className="empty-canvas-prompt-btn empty-canvas-prompt-btn--secondary"
-          onClick={onSearchNotebook}
-        >
-          Search Notebook
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
 interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly theme: EffectiveTheme;
   readonly onEditorReady?: (editor: TldrawEditor | null) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
@@ -2248,6 +2169,7 @@ const PageTextCanvas = ({
   page,
   notebook,
   highlightedCanvasItemId,
+  theme,
   onEditorReady,
   onPageTextCanvasChange
 }: PageTextCanvasProps) => {
@@ -2283,6 +2205,10 @@ const PageTextCanvas = ({
     [highlightedCanvasItemId, initialRegions]
   );
 
+  useEffect(() => {
+    editorRef.current?.user?.updateUserPreferences({ colorScheme: theme });
+  }, [theme]);
+
   const handleMount = useCallback(
     (editor: TldrawEditor) => {
       const drafts = toTldrawTextShapeDrafts(initialTextItems, initialRegions);
@@ -2290,6 +2216,7 @@ const PageTextCanvas = ({
         initialFreehandDrawingItems
       );
       editorRef.current = editor;
+      editor.user?.updateUserPreferences({ colorScheme: theme });
       onEditorReady?.(editor);
 
       if (drafts.length > 0 || drawingDrafts.length > 0) {
@@ -2348,7 +2275,8 @@ const PageTextCanvas = ({
       initialTextItems,
       onEditorReady,
       onPageTextCanvasChange,
-      page.id
+      page.id,
+      theme
     ]
   );
 

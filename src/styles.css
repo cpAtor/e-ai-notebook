@@ -27,7 +27,7 @@ textarea {
   font: inherit;
 }
 
-button {
+button:not(.tlui-button) {
   border: 0;
   border-radius: 999px;
   background: #172033;
@@ -38,7 +38,7 @@ button {
   touch-action: manipulation;
 }
 
-button:hover {
+button:not(.tlui-button):hover {
   background: #2d3a58;
 }
 
@@ -780,71 +780,8 @@ textarea:focus {
   margin: 0 0 1rem;
 }
 
-/* ── Empty Canvas Prompts ───────────────────────────────────────────── */
-
-.empty-canvas-prompts {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.empty-canvas-prompts__card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 1.75rem 2rem;
-  background: rgba(255, 253, 247, 0.88);
-  backdrop-filter: blur(12px);
-  border-radius: 1.75rem;
-  border: 1px solid rgba(23, 32, 51, 0.1);
-  box-shadow: 0 8px 40px rgba(23, 32, 51, 0.1);
-  pointer-events: auto;
-  max-width: 440px;
-  text-align: center;
-}
-
-.empty-canvas-prompts__hint {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #4d5871;
-}
-
-.empty-canvas-prompts__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  justify-content: center;
-}
-
-.empty-canvas-prompt-btn {
-  padding: 0.6rem 1.1rem;
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.empty-canvas-prompt-btn--secondary {
-  background: #e6f6d9;
-  color: #275719;
-}
-
-.empty-canvas-prompt-btn--secondary:hover {
-  background: #d4eebc;
-}
-
-.empty-canvas-prompt-hint {
-  width: 100%;
-  font-size: 0.8rem;
-  color: #4d5871;
-  font-weight: 600;
-}
-
 @media (max-width: 720px) {
+  .app-shell {
     width: min(100% - 1rem, 1080px);
     padding: 1rem 0;
   }
@@ -898,12 +835,12 @@ html[data-theme="dark"] #root {
   color: #e8eaf0;
 }
 
-html[data-theme="dark"] button {
+html[data-theme="dark"] button:not(.tlui-button) {
   background: #5468ff;
   color: #f5f7ff;
 }
 
-html[data-theme="dark"] button:hover {
+html[data-theme="dark"] button:not(.tlui-button):hover {
   background: #7080ff;
 }
 
@@ -943,7 +880,6 @@ html[data-theme="dark"] .hero,
 html[data-theme="dark"] .section-card,
 html[data-theme="dark"] .save-status,
 html[data-theme="dark"] .drawing-screen__header,
-html[data-theme="dark"] .empty-canvas-prompts__card,
 html[data-theme="dark"] .canvas-modal,
 html[data-theme="dark"] .command-palette,
 html[data-theme="dark"] .hamburger-menu {
@@ -967,8 +903,6 @@ html[data-theme="dark"] .text-item-tags label,
 html[data-theme="dark"] .image-item-list label,
 html[data-theme="dark"] .link-card-list label,
 html[data-theme="dark"] .empty-state,
-html[data-theme="dark"] .empty-canvas-prompts__hint,
-html[data-theme="dark"] .empty-canvas-prompt-hint,
 html[data-theme="dark"] .drawing-screen__notebook-title,
 html[data-theme="dark"] .drawing-screen__page-type {
   color: #c6cfde;
@@ -986,8 +920,7 @@ html[data-theme="dark"] .tldraw-canvas {
 
 html[data-theme="dark"] .privacy-note,
 html[data-theme="dark"] .save-status,
-html[data-theme="dark"] .notebook-backup__status,
-html[data-theme="dark"] .empty-canvas-prompt-btn--secondary {
+html[data-theme="dark"] .notebook-backup__status {
   background: rgba(84, 104, 255, 0.18);
   color: #dbe1ff;
 }
