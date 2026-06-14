@@ -12,6 +12,7 @@ import {
   createStarterNotebook,
   replacePageCanvasItems,
   replacePageTextCanvasItems,
+  STARTER_INBOX_SECTION_ID,
   type Notebook
 } from "./domain/notebook";
 import {
@@ -33,7 +34,7 @@ describe("App", () => {
     databaseSequence += 1;
     databaseName = `app-test-${databaseSequence}`;
     window.history.replaceState({}, "", "/");
-    window.localStorage.clear();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -59,43 +60,27 @@ describe("App", () => {
     };
   };
 
-  const openNotebookManagement = async (
-    user: ReturnType<typeof userEvent.setup>
-  ) => {
-    await user.click(await screen.findByRole("button", { name: "Notebook Menu" }));
-    await user.click(
-      await screen.findByRole("button", { name: "Notebook Management Screen" })
-    );
-  };
-
-  const openCommandPalette = async (user: ReturnType<typeof userEvent.setup>) => {
-    await user.click(await screen.findByRole("button", { name: "Command Palette" }));
-  };
-
-  const searchNotebook = async (
-    user: ReturnType<typeof userEvent.setup>,
-    query: string
-  ) => {
-    await openCommandPalette(user);
-    await user.click(await screen.findByRole("button", { name: "Search Notebook" }));
-    const searchInput = await screen.findByLabelText(/Search Canvas Items/);
-    await user.clear(searchInput);
-    await user.type(searchInput, query);
-  };
-
-  const openNotebookBackupModal = async (
-    user: ReturnType<typeof userEvent.setup>
-  ) => {
-    await openCommandPalette(user);
-    await user.click(
-      await screen.findByRole("button", { name: "Notebook Export and Import" })
-    );
-  };
-
-  it("shows a private Interview Prep Notebook with seeded Sections", async () => {
-    const user = userEvent.setup();
+  it("opens directly into the Default Page Drawing Screen for a fresh user", async () => {
     await renderApp();
-    await openNotebookManagement(user);
+
+    expect(
+      await screen.findByRole("heading", { name: "Interview Prep Notebook" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Private Notebook")).toBeInTheDocument();
+    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    expect(window.location.pathname).toMatch(
+      /^\/sections\/section_inbox\/pages\/page_default$/
+    );
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Default Page" })).toBeInTheDocument();
+  });
+
+  it("shows Notebook Management Screen with Inbox Section when navigating back", async () => {
+    await renderApp();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
 
     expect(
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
@@ -106,430 +91,78 @@ describe("App", () => {
     ).toHaveTextContent(
       /Stored in local browser storage by default\.\s*Your Notebook stays in this browser unless you export it or configure a connected feature\. Browser storage is not server-grade encrypted storage, so use Notebook Export for backups rather than expecting cloud sync\./
     );
-    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Search Rough Work" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Search Canvas Items/)).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("DSA")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("System Design")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Research")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Inbox")).toBeInTheDocument();
   });
 
-  it("opens a fresh Notebook directly on an Inbox Default Page Drawing Screen", async () => {
-    const { store } = await renderApp();
-
-    expect(
-      await screen.findByRole("heading", { name: "Default Page" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
-    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
-    expect(screen.getByLabelText("Empty Canvas Prompts")).toBeInTheDocument();
-    expect(screen.queryByText("Shape this Notebook around your prep")).not.toBeInTheDocument();
-    await expect(store.loadNotebook()).resolves.toEqual(
-      expect.objectContaining({
-        sections: expect.arrayContaining([
-          expect.objectContaining({ id: "section_inbox", title: "Inbox" })
-        ]),
-        pages: expect.arrayContaining([
-          expect.objectContaining({
-            id: "page_default",
-            sectionId: "section_inbox",
-            title: "Default Page",
-            pageType: null
-          })
-        ])
-      })
-    );
-  });
-
-  it("opens a hidden Notebook Drawer with Section/Page tree creation", async () => {
-    const user = userEvent.setup();
-    const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
-    }
-
-    const notebookWithDsaPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
-
-    await renderApp(notebookWithDsaPage);
-    expect(
-      await screen.findByRole("heading", { name: "Untitled Page" })
-    ).toHaveClass("page-title-affordance");
-    expect(screen.getByText("DSA")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("complementary", { name: "Notebook Drawer" })
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
-    const drawer = await screen.findByRole("complementary", {
-      name: "Notebook Drawer"
-    });
-    expect(within(drawer).getByText("Inbox")).toBeInTheDocument();
-    expect(within(drawer).getByText("DSA")).toBeInTheDocument();
-    expect(within(drawer).getByText("System Design")).toBeInTheDocument();
-    expect(within(drawer).getByText("Research")).toBeInTheDocument();
-    expect(
-      within(drawer).getByRole("button", { name: "Untitled Page" })
-    ).toHaveAttribute("aria-current", "page");
-
-    await user.click(within(drawer).getByRole("button", { name: "Create Page in DSA" }));
-    expect(window.location.pathname).toMatch(/^\/sections\/section_dsa\/pages\/page_/);
-    expect(
-      screen.queryByRole("complementary", { name: "Notebook Drawer" })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Empty Canvas Prompts")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
-    const reopenedDrawer = await screen.findByRole("complementary", {
-      name: "Notebook Drawer"
-    });
-    await user.click(within(reopenedDrawer).getByLabelText("Research context menu"));
-    await user.click(
-      within(reopenedDrawer).getByRole("button", {
-        name: "Create Page from Research context"
-      })
-    );
-    expect(window.location.pathname).toMatch(
-      /^\/sections\/section_research\/pages\/page_/
-    );
-
-    await user.click(screen.getByRole("button", { name: "Open Notebook Drawer" }));
-    const finalDrawer = await screen.findByRole("complementary", {
-      name: "Notebook Drawer"
-    });
-    await user.click(within(finalDrawer).getByRole("button", { name: "Close Drawer" }));
-    expect(
-      screen.queryByRole("complementary", { name: "Notebook Drawer" })
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps secondary actions in the Notebook Menu and Command Palette Canvas Modals", async () => {
-    const user = userEvent.setup();
-    const firstRender = await renderApp();
-
-    expect(
-      await screen.findByRole("heading", { name: "Default Page" })
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Search Canvas Items/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Notebook Menu" }));
-    expect(screen.getByRole("navigation", { name: "Notebook Menu" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Theme: System" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Notebook Export and Import" })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Shortcuts" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Theme: System" }));
-    expect(window.localStorage.getItem("interview_prep_notebook:theme")).toBe("light");
-    await user.click(screen.getByRole("button", { name: "Settings" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Notebook Settings" })
-    ).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Theme"), "dark");
-    expect(window.localStorage.getItem("interview_prep_notebook:theme")).toBe("dark");
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    await user.clear(screen.getByLabelText("Current Page title"));
-    await user.type(screen.getByLabelText("Current Page title"), "Renamed Page");
-    expect(await screen.findByRole("heading", { name: "Renamed Page" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Close Modal" }));
-
-    firstRender.unmount();
-    firstRender.store.close();
+  it("opens hamburger management actions and persists theme selection", async () => {
     await renderApp();
-
-    expect(await screen.findByRole("heading", { name: "Renamed Page" })).toBeInTheDocument();
-    expect(document.documentElement.dataset.theme).toBe("dark");
-  });
-
-  it("keeps AI affordances hidden until explicitly enabled in settings", async () => {
     const user = userEvent.setup();
-    const firstRender = await renderApp(createStarterNotebook());
 
-    expect(
-      await screen.findByRole("heading", { name: "Default Page" })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Notebook Assistant" })
-    ).not.toBeInTheDocument();
-
-    await openCommandPalette(user);
-    expect(
-      screen.queryByRole("button", { name: "Ask Notebook Assistant" })
-    ).not.toBeInTheDocument();
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByLabelText("Enable AI affordances"));
 
-    expect(window.localStorage.getItem("interview_prep_notebook:ai_enabled")).toBe(
-      "true"
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toContainElement(
+      screen.getByRole("checkbox", { name: /enable ai features/i })
     );
-    await user.click(screen.getByRole("button", { name: "Close Modal" }));
+
+    await user.click(screen.getByRole("button", { name: "Close Settings" }));
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Light" }));
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("notebook_theme")).toBe("light");
+
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
     expect(
-      screen.getByRole("button", { name: "Notebook Assistant" })
+      await screen.findByRole("dialog", { name: "Export Notebook Backup" })
     ).toBeInTheDocument();
-
-    await openCommandPalette(user);
-    await user.click(screen.getByRole("button", { name: "Ask Notebook Assistant" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Notebook Assistant" })
-    ).toHaveTextContent(/does not make runtime network calls/i);
-
-    firstRender.unmount();
-    firstRender.store.close();
-    await renderApp(createStarterNotebook());
-
-    expect(
-      await screen.findByRole("button", { name: "Notebook Assistant" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export Notebook Backup" })).toBeInTheDocument();
   });
 
-  it("invokes search, Page switching, and Page creation from the Command Palette", async () => {
+  it("opens the command palette and runs notebook actions", async () => {
+    await renderApp();
     const user = userEvent.setup();
-    const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-    const research = starterNotebook.sections.find(
-      (section) => section.title === "Research"
-    );
 
-    if (dsa === undefined || research === undefined) {
-      throw new Error("Expected seeded Sections.");
-    }
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.keyboard("{Control>}k{/Control}");
+    await screen.findByRole("dialog", { name: "Command Palette" });
+    await user.type(screen.getByRole("textbox", { name: "Command Palette" }), "New Page in Inbox");
+    await user.keyboard("{Enter}");
 
-    const notebookWithPages = addBlankPage(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      research.id,
-      "page_research"
-    );
+    expect(await screen.findByRole("heading", { name: "Untitled Page" })).toBeInTheDocument();
 
-    await renderApp(notebookWithPages);
-    await screen.findByRole("heading", { name: "Untitled Page" });
-    await openCommandPalette(user);
+    await user.keyboard("{Control>}k{/Control}");
+    const commandInput = await screen.findByRole("textbox", { name: "Command Palette" });
+    await user.type(commandInput, "Search Notebook");
+    await user.keyboard("{Enter}");
 
-    expect(
-      await screen.findByRole("dialog", { name: "Command Palette" })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Search Notebook" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch or create Page" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Create Page in current Section" })
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Switch or create Page" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Page Switcher" })
-    ).toBeInTheDocument();
-    const researchRow = screen.getByText("Research").closest("li");
-
-    if (researchRow === null) {
-      throw new Error("Expected Research Page row.");
-    }
-
-    await user.click(within(researchRow).getByRole("button", { name: "Open Page" }));
-    expect(window.location.pathname).toBe("/sections/section_research/pages/page_research");
-
-    await openCommandPalette(user);
-    await user.click(screen.getByRole("button", { name: "Create Page in current Section" }));
-    expect(window.location.pathname).toMatch(
-      /^\/sections\/section_research\/pages\/page_/
-    );
-
-    await searchNotebook(user, "no matching notes");
-    expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
-  });
-
-  it("opens Search as a floating overlay and groups results by Page", async () => {
-    const user = userEvent.setup();
-    const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-    const research = starterNotebook.sections.find(
-      (section) => section.title === "Research"
-    );
-
-    if (dsa === undefined || research === undefined) {
-      throw new Error("Expected seeded Sections.");
-    }
-
-    const notebookWithPages = addBlankPage(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      research.id,
-      "page_research"
-    );
-    const notebookWithDsaText = replacePageTextCanvasItems(
-      notebookWithPages,
-      "page_dsa",
-      [
-        {
-          id: "canvas_item_dsa",
-          pageId: "page_dsa",
-          type: "text",
-          text: "Shared retrieval invariant",
-          tags: ["shared"]
-        }
-      ],
-      [
-        {
-          pageId: "page_dsa",
-          canvasItemId: "canvas_item_dsa",
-          bounds: { x: 32, y: 40, width: 240, height: 64 }
-        }
-      ]
-    );
-    const notebookWithResearchLink = addLinkCardCanvasItem(
-      notebookWithDsaText,
-      "page_research",
-      "canvas_item_research",
-      "https://example.com/search",
-      "Shared retrieval reading",
-      ["shared"]
-    );
-
-    await renderApp(notebookWithResearchLink);
-    await screen.findByRole("heading", { name: "Untitled Page" });
-    await user.click(screen.getByRole("button", { name: "Open Search Overlay" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Search Notebook" })
-    ).toHaveClass("canvas-modal");
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "shared");
-
-    const dsaGroupHeading = await screen.findByText(
-      "Interview Prep Notebook / DSA / Untitled Page"
-    );
-    const researchGroupHeading = await screen.findByText(
-      "Interview Prep Notebook / Research / Untitled Page"
-    );
-    expect(dsaGroupHeading).toBeInTheDocument();
-    expect(researchGroupHeading).toBeInTheDocument();
-    expect(screen.getAllByText("Text Canvas Item").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Link Card").length).toBeGreaterThan(0);
-
-    const researchGroup = researchGroupHeading.closest("section");
-
-    if (researchGroup === null) {
-      throw new Error("Expected grouped Research Search Results.");
-    }
-
-    await user.click(within(researchGroup).getByRole("button", { name: "Open Result" }));
-    expect(window.location.pathname).toBe("/sections/section_research/pages/page_research");
-    expect(
-      await screen.findByLabelText("Highlighted Link Card Canvas Region")
-    ).toBeInTheDocument();
-  });
-
-  it("hides Empty Canvas Prompts once the Default Page has a Canvas Item", async () => {
-    const notebookWithDefaultText = replacePageTextCanvasItems(
-      {
-        ...createStarterNotebook(),
-        sections: [{ id: "section_inbox", title: "Inbox" }],
-        pages: [
-          {
-            id: "page_default",
-            sectionId: "section_inbox",
-            title: "Default Page",
-            pageType: null
-          }
-        ]
-      },
-      "page_default",
-      [
-        {
-          id: "canvas_item_started",
-          pageId: "page_default",
-          type: "text",
-          text: "Started rough work",
-          tags: []
-        }
-      ],
-      [
-        {
-          pageId: "page_default",
-          canvasItemId: "canvas_item_started",
-          bounds: { x: 64, y: 48, width: 260, height: 64 }
-        }
-      ]
-    );
-
-    await renderApp(notebookWithDefaultText);
-
-    expect(
-      await screen.findByRole("heading", { name: "Default Page" })
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Empty Canvas Prompts")).not.toBeInTheDocument();
-  });
-
-  it("opens the last opened Page for a returning Notebook when it still exists", async () => {
-    const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-    const research = starterNotebook.sections.find(
-      (section) => section.title === "Research"
-    );
-
-    if (dsa === undefined || research === undefined) {
-      throw new Error("Expected seeded Sections.");
-    }
-
-    const notebookWithPages = addBlankPage(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      research.id,
-      "page_research"
-    );
-    window.localStorage.setItem(
-      "interview_prep_notebook:last_opened_page",
-      JSON.stringify({ sectionId: research.id, pageId: "page_research" })
-    );
-
-    await renderApp(notebookWithPages);
-
-    expect(
-      await screen.findByRole("heading", { name: "Untitled Page" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("Research")).toBeInTheDocument();
-  });
-
-  it("falls back to the first existing Page when the remembered Page is gone", async () => {
-    const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
-    }
-
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
-    window.localStorage.setItem(
-      "interview_prep_notebook:last_opened_page",
-      JSON.stringify({ sectionId: "section_missing", pageId: "page_missing" })
-    );
-
-    await renderApp(notebookWithPage);
-
-    expect(
-      await screen.findByRole("heading", { name: "Untitled Page" })
-    ).toBeInTheDocument();
-    expect(screen.getByText("DSA")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Search Notebook" })).toBeInTheDocument();
   });
 
   it("renames, adds, and removes Sections", async () => {
     const user = userEvent.setup();
     await renderApp();
-    await openNotebookManagement(user);
 
-    await screen.findByDisplayValue("DSA");
-    await user.clear(screen.getByDisplayValue("DSA"));
-    await user.type(screen.getByLabelText("Rename DSA"), "Algorithms");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await screen.findByDisplayValue("Inbox");
+    await user.clear(screen.getByDisplayValue("Inbox"));
+    await user.type(screen.getByLabelText("Rename Inbox"), "Algorithms");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
-    const researchRow = screen.getByDisplayValue("Research").closest("li");
 
-    if (researchRow === null) {
-      throw new Error("Expected Research Section row.");
+    const algorithmsRow = screen.getByDisplayValue("Algorithms").closest("li");
+
+    if (algorithmsRow === null) {
+      throw new Error("Expected Algorithms Section row.");
     }
 
-    await user.click(within(researchRow).getByRole("button", { name: "Remove" }));
+    await user.click(within(algorithmsRow).getByRole("button", { name: "Remove" }));
 
-    expect(screen.getByDisplayValue("Algorithms")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Behavioral")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Research")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Algorithms")).not.toBeInTheDocument();
   });
 
   it("keeps failed autosaves sticky and retries the visible unsaved Notebook", async () => {
@@ -554,15 +187,14 @@ describe("App", () => {
     };
 
     const view = render(<App store={failingStore} />);
-    await openNotebookManagement(user);
 
-    await screen.findByDisplayValue("DSA");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
 
-    const failureToast = await screen.findByRole("alert");
-    expect(failureToast).toHaveClass("canvas-toast");
-    expect(failureToast).toHaveTextContent("Autosave failed");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Autosave failed");
     expect(screen.getByDisplayValue("Behavioral")).toBeInTheDocument();
     expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
 
@@ -580,48 +212,8 @@ describe("App", () => {
 
     view.unmount();
     render(<App store={failingStore} />);
-    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
-  });
-
-  it("keeps quick saves quiet but shows slow autosave Canvas Toasts", async () => {
-    const user = userEvent.setup();
-    let persistedNotebook = createStarterNotebook();
-    let resolveSave: (() => void) | undefined;
-    const slowStore: NotebookStore = {
-      loadNotebook: vi.fn(async () => persistedNotebook),
-      saveNotebook: vi.fn(
-        (nextNotebook) =>
-          new Promise<void>((resolve) => {
-            persistedNotebook = nextNotebook;
-            resolveSave = resolve;
-          })
-      ),
-      loadRawNotebookPayload: vi.fn(async () => JSON.stringify(persistedNotebook)),
-      startFreshNotebook: vi.fn(async () => createStarterNotebook()),
-      close: vi.fn()
-    };
-
-    render(<App store={slowStore} />);
-    await openNotebookManagement(user);
-
-    await screen.findByDisplayValue("DSA");
-    expect(screen.queryByLabelText("Autosave status")).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
-    await user.click(screen.getByRole("button", { name: "Add Section" }));
-
-    await waitFor(
-      () =>
-        expect(screen.getByText("Saving Notebook changes")).toBeInTheDocument(),
-      { timeout: 1500 }
-    );
-    expect(screen.getByLabelText("Autosave status")).toHaveClass("canvas-toast");
-
-    resolveSave?.();
-
-    expect(await screen.findByText("Notebook changes saved")).toBeInTheDocument();
   });
 
   it("pauses autosave and reloads stored data when another tab changed the Notebook", async () => {
@@ -647,22 +239,25 @@ describe("App", () => {
     };
 
     render(<App store={conflictStore} />);
-    await openNotebookManagement(user);
 
-    await screen.findByDisplayValue("DSA");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await screen.findByDisplayValue("Inbox");
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
 
-    const conflictToast = await screen.findByRole("alert");
-    expect(conflictToast).toHaveClass("canvas-toast");
-    expect(conflictToast).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Another tab changed this Notebook"
     );
-    expect(conflictToast).toHaveTextContent(/Autosave is paused in this tab/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Autosave is paused in this tab/i
+    );
     expect(screen.queryByText("Notebook changes saved")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Reload Stored Notebook" }));
-    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("External prep")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Behavioral")).not.toBeInTheDocument();
   });
 
   it("shows unsupported storage when the Notebook cannot load from IndexedDB", async () => {
@@ -695,6 +290,7 @@ describe("App", () => {
   });
 
   it("enters unsupported storage instead of claiming autosave after a first persistence failure", async () => {
+    const user = userEvent.setup();
     const unavailableStore: NotebookStore = {
       loadNotebook: vi.fn(async () => createStarterNotebook()),
       saveNotebook: vi.fn(async () => {
@@ -709,6 +305,12 @@ describe("App", () => {
     };
 
     render(<App store={unavailableStore} />);
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await screen.findByDisplayValue("Inbox");
+    await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
+    await user.click(screen.getByRole("button", { name: "Add Section" }));
 
     expect(
       await screen.findByRole("heading", {
@@ -788,24 +390,9 @@ describe("App", () => {
         type: "application/json"
       })
     );
-    await openNotebookManagement(user);
 
     expect(await screen.findByDisplayValue("Behavioral")).toBeInTheDocument();
-    expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sections: expect.arrayContaining([
-          expect.objectContaining({ id: "section_inbox", title: "Inbox" }),
-          expect.objectContaining({ id: "section_behavioral", title: "Behavioral" })
-        ]),
-        pages: expect.arrayContaining([
-          expect.objectContaining({
-            id: "page_default",
-            sectionId: "section_inbox",
-            title: "Default Page"
-          })
-        ])
-      })
-    );
+    expect(recoveryStore.saveNotebook).toHaveBeenCalledWith(importedNotebook);
   });
 
   it("makes no default runtime fetch calls", async () => {
@@ -821,55 +408,56 @@ describe("App", () => {
   it("creates a blank Page in a Section and opens a URL-addressable route", async () => {
     const user = userEvent.setup();
     await renderApp();
-    await openNotebookManagement(user);
 
-    const dsaInput = await screen.findByDisplayValue("DSA");
-    const dsaRow = dsaInput.closest("li");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxInput = await screen.findByDisplayValue("Inbox");
+    const inboxRow = inboxInput.closest("li");
 
-    if (dsaRow === null) {
-      throw new Error("Expected DSA Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(dsaRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
 
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Page Type: unset")).toBeInTheDocument();
     expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
     expect(window.location.pathname).toMatch(
-      /^\/sections\/section_dsa\/pages\/page_/
+      /^\/sections\/section_inbox\/pages\/page_/
     );
   });
 
   it("reopens the same Page from its URL after reload", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
-    await openNotebookManagement(user);
 
-    const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
-    if (dsaRow === null) {
-      throw new Error("Expected DSA Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(dsaRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
     await screen.findByRole("heading", { name: "Untitled Page" });
-    const pagePath = window.location.pathname;
+    const openedPagePath = window.location.pathname;
 
     firstRender.unmount();
     firstRender.store.close();
-    window.history.replaceState({}, "", pagePath);
+    window.history.replaceState({}, "", openedPagePath);
     await renderApp();
 
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByText("DSA")).toBeInTheDocument();
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
     expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
   });
 
@@ -888,7 +476,7 @@ describe("App", () => {
     window.history.replaceState(
       {},
       "",
-      "/sections/section_dsa/pages/page_missing"
+      "/sections/section_inbox/pages/page_missing"
     );
     await renderApp();
 
@@ -898,20 +486,20 @@ describe("App", () => {
   it("searches text Rough Work and opens a highlighted Canvas Region", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithPage = addBlankPage(starterNotebook, inbox.id, "page_search_test");
     const notebookWithText = replacePageTextCanvasItems(
       notebookWithPage,
-      "page_dsa",
+      "page_search_test",
       [
         {
           id: "canvas_item_trace",
-          pageId: "page_dsa",
+          pageId: "page_search_test",
           type: "text",
           text: "Binary search invariant",
           tags: []
@@ -919,7 +507,7 @@ describe("App", () => {
       ],
       [
         {
-          pageId: "page_dsa",
+          pageId: "page_search_test",
           canvasItemId: "canvas_item_trace",
           bounds: { x: 120, y: 80, width: 260, height: 64 }
         }
@@ -928,17 +516,18 @@ describe("App", () => {
 
     await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await searchNotebook(user, "invariant");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "invariant");
 
     const result = await screen.findByText(
-      "Interview Prep Notebook / DSA / Untitled Page"
+      "Interview Prep Notebook / Inbox / Untitled Page"
     );
 
     expect(result).toBeInTheDocument();
-    expect(screen.getAllByText(/Binary search invariant/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Binary search invariant/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
-    expect(window.location.pathname).toBe("/sections/section_dsa/pages/page_dsa");
+    expect(window.location.pathname).toBe("/sections/section_inbox/pages/page_search_test");
     expect(
       await screen.findByLabelText("Highlighted Canvas Region")
     ).toBeInTheDocument();
@@ -947,20 +536,20 @@ describe("App", () => {
   it("tags text Rough Work and shows matched Tags in Search Results", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithPage = addBlankPage(starterNotebook, inbox.id, "page_tag_test");
     const notebookWithText = replacePageTextCanvasItems(
       notebookWithPage,
-      "page_dsa",
+      "page_tag_test",
       [
         {
           id: "canvas_item_trace",
-          pageId: "page_dsa",
+          pageId: "page_tag_test",
           type: "text",
           text: "Binary search invariant",
           tags: []
@@ -968,7 +557,7 @@ describe("App", () => {
       ],
       [
         {
-          pageId: "page_dsa",
+          pageId: "page_tag_test",
           canvasItemId: "canvas_item_trace",
           bounds: { x: 120, y: 80, width: 260, height: 64 }
         }
@@ -977,21 +566,30 @@ describe("App", () => {
 
     const { store } = await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(
-      await screen.findByRole("button", { name: "Open Item Inspector" })
-    );
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const untitledPageRow = (
+      await screen.findByText("Untitled Page")
+    ).closest("li");
+
+    if (untitledPageRow === null) {
+      throw new Error("Expected Untitled Page row.");
+    }
+
+    await user.click(within(untitledPageRow).getByRole("button", { name: "Open Page" }));
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
-      await screen.findByLabelText("Inspector Tags"),
+      await screen.findByLabelText("Tags for Binary search invariant"),
       "arrays, invariant"
     );
-    await searchNotebook(user, "arrays");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
 
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
     await waitFor(async () => {
       const reloadedNotebook = await store.loadNotebook();
       expect(reloadedNotebook.canvasItems).toContainEqual({
         id: "canvas_item_trace",
-        pageId: "page_dsa",
+        pageId: "page_tag_test",
         type: "text",
         text: "Binary search invariant",
         tags: ["arrays", "invariant"]
@@ -1005,17 +603,19 @@ describe("App", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
-    await openNotebookManagement(user);
 
-    const researchRow = (await screen.findByDisplayValue("Research")).closest("li");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
-    if (researchRow === null) {
-      throw new Error("Expected Research Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(researchRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
       await screen.findByLabelText("Link Card URL"),
       "https://example.com/system-design"
@@ -1032,9 +632,11 @@ describe("App", () => {
         name: "https://example.com/system-design"
       })
     ).toBeInTheDocument();
-    await searchNotebook(user, "cache");
 
-    expect((await screen.findAllByText("Link Card")).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "cache");
+
+    expect(await screen.findByText("Link Card")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #cache")).toBeInTheDocument();
     expect(screen.getAllByText(/Distributed cache research queue/).length).toBeGreaterThan(0);
     await waitFor(async () => {
@@ -1055,6 +657,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByRole("link", {
         name: "https://example.com/system-design"
@@ -1066,17 +670,19 @@ describe("App", () => {
   it("creates, edits, reloads, searches, and highlights Code Blocks without runner affordances", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
-    await openNotebookManagement(user);
 
-    const dsaRow = (await screen.findByDisplayValue("DSA")).closest("li");
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
-    if (dsaRow === null) {
-      throw new Error("Expected DSA Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(dsaRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
       await screen.findByLabelText("Code Block content"),
       "const complement = target - nums[i];"
@@ -1084,23 +690,24 @@ describe("App", () => {
     await user.type(screen.getByLabelText("Code Block Tags"), "arrays, two sum");
     await user.click(screen.getByRole("button", { name: "Add Code Block" }));
 
-    expect((await screen.findAllByText(/const complement/)).length).toBeGreaterThan(0);
+    expect(await screen.findByDisplayValue(/const complement/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /run/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/judge/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/sandbox/i)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
-    await user.clear(screen.getByLabelText("Inspector Code Block content"));
+    await user.clear(screen.getByLabelText("Edit Code Block"));
     await user.type(
-      screen.getByLabelText("Inspector Code Block content"),
+      screen.getByLabelText("Edit Code Block"),
       "return seen.get(complement);"
     );
-    await searchNotebook(user, "two sum");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "two sum");
 
-    expect((await screen.findAllByText("Code Block")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Code Block")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #two sum")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
     ).toBeInTheDocument();
@@ -1121,9 +728,11 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
-      (await screen.findAllByText("return seen.get(complement);")).length
-    ).toBeGreaterThan(0);
+      await screen.findByDisplayValue("return seen.get(complement);")
+    ).toBeInTheDocument();
   });
 
   it("adds Image Items with optional captions and Tags, persists them, and searches without AI summaries", async () => {
@@ -1132,19 +741,21 @@ describe("App", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
-    await openNotebookManagement(user);
 
-    const systemDesignRow = (
-      await screen.findByDisplayValue("System Design")
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (
+      await screen.findByDisplayValue("Inbox")
     ).closest("li");
 
-    if (systemDesignRow === null) {
-      throw new Error("Expected System Design Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(systemDesignRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.upload(
       await screen.findByLabelText("Image Item file"),
       new File(["diagram"], "failover.png", { type: "image/png" })
@@ -1165,18 +776,19 @@ describe("App", () => {
       screen.queryByRole("button", { name: /AI summary|classify/i })
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
-    await user.clear(screen.getByLabelText("Inspector Image Item caption"));
+    await user.clear(screen.getByLabelText("Edit Image Item caption"));
     await user.type(
-      screen.getByLabelText("Inspector Image Item caption"),
+      screen.getByLabelText("Edit Image Item caption"),
       "Updated failover sketch"
     );
-    await searchNotebook(user, "availability");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "availability");
 
-    expect((await screen.findAllByText("Image Item")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Image Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #availability")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Image Item Canvas Region")
     ).toBeInTheDocument();
@@ -1199,6 +811,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByRole("img", { name: "Updated failover sketch" })
     ).toBeInTheDocument();
@@ -1208,19 +822,21 @@ describe("App", () => {
   it("creates, edits, reloads, searches, and highlights Diagram Items for system design", async () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
-    await openNotebookManagement(user);
 
-    const systemDesignRow = (
-      await screen.findByDisplayValue("System Design")
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (
+      await screen.findByDisplayValue("Inbox")
     ).closest("li");
 
-    if (systemDesignRow === null) {
-      throw new Error("Expected System Design Section row.");
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
     }
 
     await user.click(
-      within(systemDesignRow).getByRole("button", { name: "New Blank Page" })
+      within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.selectOptions(
       await screen.findByLabelText("Diagram Item type"),
       "arrow"
@@ -1233,24 +849,22 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Add Diagram Item" }));
 
     expect(
-      await screen.findByText("API Gateway publishes to queue")
+      await screen.findByDisplayValue("API Gateway publishes to queue")
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Item Inspector" }));
-    await user.selectOptions(
-      screen.getByLabelText("Inspector Diagram Item kind"),
-      "sticky-note"
-    );
-    await user.clear(screen.getByLabelText("Inspector Diagram Item label"));
+    await user.selectOptions(screen.getByLabelText("Diagram Item kind"), "sticky-note");
+    await user.clear(screen.getByLabelText("Edit Diagram Item label"));
     await user.type(
-      screen.getByLabelText("Inspector Diagram Item label"),
+      screen.getByLabelText("Edit Diagram Item label"),
       "Queue absorbs write spikes"
     );
-    await searchNotebook(user, "backpressure");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "backpressure");
 
-    expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #backpressure")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
     ).toBeInTheDocument();
@@ -1272,28 +886,30 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
-      await screen.findByText("Queue absorbs write spikes")
+      await screen.findByDisplayValue("Queue absorbs write spikes")
     ).toBeInTheDocument();
   });
 
   it("shows Freehand Drawing controls without OCR or searchable handwriting claims", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     const notebookWithDrawing = replacePageCanvasItems(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      "page_dsa",
+      addBlankPage(starterNotebook, inbox.id, "page_drawing_test"),
+      "page_drawing_test",
       [],
       [
         {
           id: "canvas_item_sketch",
-          pageId: "page_dsa",
+          pageId: "page_drawing_test",
           type: "freehand-drawing",
           shape: {
             type: "draw",
@@ -1308,7 +924,7 @@ describe("App", () => {
       ],
       [
         {
-          pageId: "page_dsa",
+          pageId: "page_drawing_test",
           canvasItemId: "canvas_item_sketch",
           bounds: { x: 24, y: 36, width: 180, height: 90 }
         }
@@ -1317,11 +933,19 @@ describe("App", () => {
 
     await renderApp(notebookWithDrawing);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const untitledPageRow = (await screen.findByText("Untitled Page")).closest("li");
 
-    expect(await screen.findByRole("button", { name: "Use Draw Tool" })).toBeInTheDocument();
-    expect(screen.getByText(/not OCR or searchable handwriting/i)).toBeInTheDocument();
+    if (untitledPageRow === null) {
+      throw new Error("Expected Untitled Page row.");
+    }
 
-    await searchNotebook(user, "encoded-handwriting-stroke");
+    await user.click(within(untitledPageRow).getByRole("button", { name: "Open Page" }));
+
+    await screen.findByTestId("tldraw-page-canvas");
+
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
 
     expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
     expect(screen.queryByText("Freehand Drawing")).not.toBeInTheDocument();
@@ -1330,15 +954,15 @@ describe("App", () => {
   it("searches seeded Code Blocks and opens their highlighted Canvas Region", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     const notebookWithCodeBlock = addCodeBlockCanvasItem(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      "page_dsa",
+      addBlankPage(starterNotebook, inbox.id, "page_code_test"),
+      "page_code_test",
       "canvas_item_code_block",
       "function bfs(queue) { return queue.shift(); }",
       ["graphs"]
@@ -1346,9 +970,11 @@ describe("App", () => {
 
     await renderApp(notebookWithCodeBlock);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await searchNotebook(user, "bfs");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "bfs");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
     ).toBeInTheDocument();
@@ -1357,17 +983,15 @@ describe("App", () => {
   it("searches seeded Image Items and opens their highlighted Canvas Region", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const systemDesign = starterNotebook.sections.find(
-      (section) => section.title === "System Design"
-    );
+    const inbox = starterNotebook.sections[0];
 
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     const notebookWithImage = addImageCanvasItem(
-      addBlankPage(starterNotebook, systemDesign.id, "page_design"),
-      "page_design",
+      addBlankPage(starterNotebook, inbox.id, "page_image_test"),
+      "page_image_test",
       "canvas_item_image",
       "data:image/png;base64,ZGlhZ3JhbQ==",
       "image/png",
@@ -1377,9 +1001,11 @@ describe("App", () => {
 
     await renderApp(notebookWithImage);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await searchNotebook(user, "backpressure");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "backpressure");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Image Item Canvas Region")
     ).toBeInTheDocument();
@@ -1388,26 +1014,19 @@ describe("App", () => {
   it("exports and imports a Notebook backup while rebuilding Search Results", async () => {
     const user = userEvent.setup();
     const starterNotebook = createStarterNotebook();
-    const research = starterNotebook.sections.find(
-      (section) => section.title === "Research"
-    );
-
-    if (research === undefined) {
-      throw new Error("Expected seeded Research Section.");
-    }
 
     const notebookWithPage = addBlankPage(
       starterNotebook,
-      research.id,
-      "page_research"
+      STARTER_INBOX_SECTION_ID,
+      "page_export_test"
     );
     const notebookWithText = replacePageTextCanvasItems(
       notebookWithPage,
-      "page_research",
+      "page_export_test",
       [
         {
           id: "canvas_item_note",
-          pageId: "page_research",
+          pageId: "page_export_test",
           type: "text",
           text: "Consistent hashing notes",
           tags: ["distributed systems"]
@@ -1415,7 +1034,7 @@ describe("App", () => {
       ],
       [
         {
-          pageId: "page_research",
+          pageId: "page_export_test",
           canvasItemId: "canvas_item_note",
           bounds: { x: 12, y: 24, width: 240, height: 80 }
         }
@@ -1423,7 +1042,7 @@ describe("App", () => {
     );
     const notebookWithLink = addLinkCardCanvasItem(
       notebookWithText,
-      "page_research",
+      "page_export_test",
       "canvas_item_link",
       "https://example.com/cache",
       "Cache reference",
@@ -1431,14 +1050,14 @@ describe("App", () => {
     );
     const notebookWithCode = addCodeBlockCanvasItem(
       notebookWithLink,
-      "page_research",
+      "page_export_test",
       "canvas_item_code",
       "function shard(key) { return hash(key) % nodes.length; }",
       ["sharding"]
     );
     const notebookWithImage = addImageCanvasItem(
       notebookWithCode,
-      "page_research",
+      "page_export_test",
       "canvas_item_image",
       "data:image/png;base64,Y2FjaGU=",
       "image/png",
@@ -1447,7 +1066,7 @@ describe("App", () => {
     );
     const importedNotebook = addDiagramCanvasItem(
       notebookWithImage,
-      "page_research",
+      "page_export_test",
       "canvas_item_diagram",
       "sticky-note",
       "Eviction policy reminder",
@@ -1456,14 +1075,11 @@ describe("App", () => {
 
     await renderApp();
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await openNotebookBackupModal(user);
-    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.click(await screen.findByRole("button", { name: "Export Notebook Backup" }));
 
     const exportJson = await screen.findByLabelText("Notebook Export JSON");
     const exportJsonValue = (exportJson as HTMLTextAreaElement).value;
-    expect(await screen.findByLabelText("Notebook Export Canvas Toast")).toHaveClass(
-      "canvas-toast"
-    );
 
     expect(exportJsonValue).toContain('"canvasItems": []');
     expect(exportJsonValue).not.toContain("localIndex");
@@ -1478,15 +1094,134 @@ describe("App", () => {
     expect(
       await screen.findByText(/Search uses a freshly rebuilt Local Index/)
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Close Modal" }));
-    await searchNotebook(user, "eviction");
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "eviction");
 
-    expect((await screen.findAllByText("Diagram Item")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #eviction")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
     ).toBeInTheDocument();
+  });
+
+  it("opens the last opened Page when a returning user navigates to root", async () => {
+    const firstRender = await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
+
+    if (inboxRow === null) {
+      throw new Error("Expected Inbox Section row.");
+    }
+
+    await user.click(within(inboxRow).getByRole("button", { name: "New Blank Page" }));
+    await screen.findByRole("heading", { name: "Untitled Page" });
+    const lastOpenedPath = window.location.pathname;
+
+    firstRender.unmount();
+    firstRender.store.close();
+    window.history.replaceState({}, "", "/");
+    await renderApp();
+
+    await screen.findByRole("heading", { name: "Untitled Page" });
+    expect(window.location.pathname).toBe(lastOpenedPath);
+  });
+
+  it("opens search overlay from Drawing Screen, finds seeded Code Block, and highlights Canvas Region", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const inbox = starterNotebook.sections[0];
+
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
+    }
+
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      addBlankPage(starterNotebook, inbox.id, "page_search_overlay_test"),
+      "page_search_overlay_test",
+      "canvas_item_search_code",
+      "function dfs(graph, start) { return graph[start]; }",
+      ["graphs", "dfs"]
+    );
+
+    await renderApp(notebookWithCodeBlock);
+    await screen.findByTestId("tldraw-page-canvas");
+
+    const searchBtns = screen.getAllByRole("button", { name: "Search Notebook" });
+    const headerSearchBtn = searchBtns[0];
+    if (headerSearchBtn === undefined) throw new Error("Expected Search Notebook header button.");
+    await user.click(headerSearchBtn);
+
+    const searchDialog = await screen.findByRole("dialog", { name: "Search Notebook" });
+    expect(searchDialog).toBeInTheDocument();
+
+    const searchInput = within(searchDialog).getByRole("textbox", { name: "Search Notebook" });
+    await user.type(searchInput, "dfs");
+
+    expect(await within(searchDialog).findByText("Code Block")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("#dfs")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Inbox")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(screen.queryByRole("textbox", { name: "Search Notebook" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
+    expect(
+      await screen.findByLabelText("Highlighted Code Block Canvas Region")
+    ).toBeInTheDocument();
+  });
+
+  it("does not show the Assistant Bubble when AI is disabled by default", async () => {
+    await renderApp();
+
+    await screen.findByTestId("tldraw-page-canvas");
+
+    expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBeNull();
+  });
+
+  it("shows the Assistant Bubble after enabling AI in Settings and persists the preference", async () => {
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
+    const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
+
+    expect(aiToggle).not.toBeChecked();
+    await user.click(aiToggle);
+    expect(aiToggle).toBeChecked();
+
+    expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBe("true");
+  });
+
+  it("hides the Assistant Bubble after disabling AI in Settings", async () => {
+    localStorage.setItem("notebook_ai_enabled", "true");
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
+    const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
+
+    expect(aiToggle).toBeChecked();
+    await user.click(aiToggle);
+    expect(aiToggle).not.toBeChecked();
+
+    expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBe("false");
   });
 });

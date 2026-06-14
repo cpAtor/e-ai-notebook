@@ -2,8 +2,6 @@ import {
   ChangeEvent,
   ClipboardEvent,
   ComponentProps,
-  CSSProperties,
-  DragEvent,
   FormEvent,
   ReactNode,
   useCallback,
@@ -34,15 +32,18 @@ import {
   addLinkCardCanvasItem,
   addBlankPage,
   addSection,
-  type CanvasItem,
   type CanvasItemId,
+  type CodeBlockCanvasItem,
   createCanvasItemId,
   createPageId,
   createSectionId,
+  type DiagramCanvasItem,
   type DiagramItemKind,
   type FreehandDrawingCanvasItem,
   getPage,
   getSection,
+  type ImageCanvasItem,
+  type LinkCardCanvasItem,
   Notebook,
   Page,
   PageId,
@@ -70,12 +71,46 @@ import {
 } from "./persistence/notebookStorage";
 
 const DEFAULT_NEW_SECTION_TITLE = "New Section";
-const DEFAULT_SECTION_ID: SectionId = "section_inbox";
-const DEFAULT_PAGE_ID: PageId = "page_default";
-const LAST_OPENED_PAGE_STORAGE_KEY = "interview_prep_notebook:last_opened_page";
-const THEME_STORAGE_KEY = "interview_prep_notebook:theme";
-const AI_ENABLED_STORAGE_KEY = "interview_prep_notebook:ai_enabled";
+const THEME_STORAGE_KEY = "notebook_theme";
+const AI_ENABLED_STORAGE_KEY = "notebook_ai_enabled";
 const defaultNotebookStore = createNotebookStore();
+
+const getStoredAiEnabled = (): boolean => {
+  try {
+    return localStorage.getItem(AI_ENABLED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+type Theme = "system" | "light" | "dark";
+type EffectiveTheme = Exclude<Theme, "system">;
+
+const getEffectiveTheme = (theme: Theme): EffectiveTheme =>
+  theme === "system" ? "dark" : theme;
+
+const getStoredTheme = (): Theme => {
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+
+    if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+  } catch {
+    // Ignore storage errors while choosing a default theme.
+  }
+
+  return "system";
+};
+
+const applyThemeToDocument = (theme: Theme) => {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.dataset.theme = getEffectiveTheme(theme);
+};
+
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   fonts: {
     tldraw_draw: "data:font/woff2;base64,",
@@ -137,11 +172,6 @@ type PageRoute =
       readonly sectionId: SectionId;
       readonly pageId: PageId;
     };
-type OpenPageRoute = Extract<PageRoute, { readonly kind: "page" }>;
-type InspectableCanvasItem = Exclude<
-  CanvasItem,
-  { readonly type: "freehand-drawing" }
->;
 
 type ActivePage =
   | {
@@ -172,21 +202,6 @@ type BackupStatus =
   | { readonly kind: "success"; readonly message: string }
   | { readonly kind: "failed"; readonly message: string };
 
-interface SaveToastVisibility {
-  readonly showSlowSaving: boolean;
-  readonly showSaved: boolean;
-  readonly showNextSaved: boolean;
-}
-
-type ThemePreference = "system" | "light" | "dark";
-type CanvasModalKind =
-  | "search"
-  | "pages"
-  | "backup"
-  | "settings"
-  | "shortcuts"
-  | "assistant";
-
 interface RecoveryState {
   readonly message: string;
   readonly rawPayload: string;
@@ -206,19 +221,14 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [recoveryState, setRecoveryState] = useState<RecoveryState | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
-  const [saveToastVisibility, setSaveToastVisibility] =
-    useState<SaveToastVisibility>({
-      showSlowSaving: false,
-      showSaved: false,
-      showNextSaved: false
-    });
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
   const [notebookExportJson, setNotebookExportJson] = useState("");
+  const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  const [aiEnabled, setAiEnabled] = useState<boolean>(getStoredAiEnabled);
   const saveAttemptRef = useRef(0);
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
   );
-  const initialRouteRef = useRef(route);
   const [sectionTitleDrafts, setSectionTitleDrafts] = useState<
     Partial<Record<SectionId, string>>
   >({});
@@ -226,75 +236,34 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedCanvasItemId, setHighlightedCanvasItemId] =
     useState<CanvasItemId | null>(null);
-  const [themePreference, setThemePreference] = useState<ThemePreference>(
-    loadThemePreference
-  );
-  const [isAiEnabled, setIsAiEnabled] = useState(loadAiEnabledPreference);
 
   useEffect(() => {
     let isCurrent = true;
 
     store
       .loadNotebook()
-      .then(async (storedNotebook) => {
+      .then((storedNotebook) => {
         if (isCurrent) {
-          const preparedNotebook = prepareNotebookForDrawingScreen(storedNotebook);
-          const initialRoute = initialRouteForNotebook(
-            preparedNotebook.notebook,
-            initialRouteRef.current
-          );
-
-          setNotebook(preparedNotebook.notebook);
+          setNotebook(storedNotebook);
           setLoadError(null);
           setRecoveryState(null);
-          setRoute(initialRoute);
-          rememberLastOpenedPage(initialRoute);
+          setSaveStatus({ kind: "saved" });
 
-          if (!preparedNotebook.changed) {
-            setSaveStatus({ kind: "saved" });
-            return;
-          }
-
-          setSaveStatus({ kind: "saving" });
-
-          try {
-            await store.saveNotebook(preparedNotebook.notebook);
-
-            if (isCurrent) {
-              setSaveStatus({ kind: "saved" });
-            }
-          } catch (error: unknown) {
-            if (!isCurrent) {
-              return;
-            }
-
-            if (error instanceof NotebookConflictError) {
-              setSaveStatus({
-                kind: "conflict",
-                message: error.message
+          if (
+            parsePageRoute(window.location.pathname).kind === "notebook" &&
+            getRootRoutePreference() !== "notebook"
+          ) {
+            const targetPage = resolveOpeningPage(storedNotebook);
+            if (targetPage !== null) {
+              const path = pagePath(targetPage.sectionId, targetPage.pageId);
+              window.history.pushState({}, "", path);
+              setRootRoutePreference("page");
+              setRoute({
+                kind: "page",
+                sectionId: targetPage.sectionId,
+                pageId: targetPage.pageId
               });
-              return;
             }
-
-            if (error instanceof NotebookStorageUnavailableError) {
-              setNotebook(null);
-              setRecoveryState(null);
-              setSaveStatus({ kind: "idle" });
-              setLoadError({
-                kind: "unsupported-storage",
-                message: unsupportedStorageMessage(error)
-              });
-              return;
-            }
-
-            setSaveStatus({
-              kind: "failed",
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Notebook changes could not be saved.",
-              unsavedNotebook: preparedNotebook.notebook
-            });
           }
         }
       })
@@ -349,79 +318,15 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, themePreference);
-    document.documentElement.dataset.theme = resolvedTheme(themePreference);
-  }, [themePreference]);
+    applyThemeToDocument(theme);
 
-  useEffect(() => {
-    window.localStorage.setItem(AI_ENABLED_STORAGE_KEY, String(isAiEnabled));
-  }, [isAiEnabled]);
-
-  useEffect(() => {
-    if (saveStatus.kind === "saving") {
-      setSaveToastVisibility((current) => ({
-        ...current,
-        showSaved: false
-      }));
-
-      const slowSaveTimer = window.setTimeout(() => {
-        setSaveToastVisibility({
-          showSlowSaving: true,
-          showSaved: false,
-          showNextSaved: true
-        });
-      }, 800);
-
-      return () => window.clearTimeout(slowSaveTimer);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore storage errors while persisting theme preference.
     }
 
-    if (saveStatus.kind === "saved") {
-      setSaveToastVisibility((current) =>
-        current.showNextSaved
-          ? {
-              showSlowSaving: false,
-              showSaved: true,
-              showNextSaved: false
-            }
-          : {
-              showSlowSaving: false,
-              showSaved: false,
-              showNextSaved: false
-            }
-      );
-      return;
-    }
-
-    if (saveStatus.kind === "failed" || saveStatus.kind === "conflict") {
-      setSaveToastVisibility({
-        showSlowSaving: false,
-        showSaved: false,
-        showNextSaved: true
-      });
-      return;
-    }
-
-    setSaveToastVisibility({
-      showSlowSaving: false,
-      showSaved: false,
-      showNextSaved: false
-    });
-  }, [saveStatus.kind]);
-
-  useEffect(() => {
-    if (!saveToastVisibility.showSaved) {
-      return;
-    }
-
-    const savedToastTimer = window.setTimeout(() => {
-      setSaveToastVisibility((current) => ({
-        ...current,
-        showSaved: false
-      }));
-    }, 3000);
-
-    return () => window.clearTimeout(savedToastTimer);
-  }, [saveToastVisibility.showSaved]);
+  }, [theme]);
 
   const activePage = useMemo(() => {
     if (notebook === null || route.kind === "notebook") {
@@ -486,78 +391,21 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
   const handleSaveRetry = () => {
     if (saveStatus.kind === "failed") {
-      setSaveToastVisibility({
-        showSlowSaving: true,
-        showSaved: false,
-        showNextSaved: true
-      });
       saveNotebook(saveStatus.unsavedNotebook);
     }
   };
 
   const handleConflictReload = () => {
-    setSaveToastVisibility({
-      showSlowSaving: true,
-      showSaved: false,
-      showNextSaved: true
-    });
     void (async () => {
       try {
         const storedNotebook = await store.loadNotebook();
-        const preparedNotebook = prepareNotebookForDrawingScreen(storedNotebook);
-        const initialRoute = initialRouteForNotebook(
-          preparedNotebook.notebook,
-          route
-        );
-
-        setNotebook(preparedNotebook.notebook);
+        setNotebook(storedNotebook);
         setLoadError(null);
         setRecoveryState(null);
+        setSaveStatus({ kind: "saved" });
         setBackupStatus({ kind: "idle" });
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
-        setRoute(initialRoute);
-        rememberLastOpenedPage(initialRoute);
-
-        if (!preparedNotebook.changed) {
-          setSaveStatus({ kind: "saved" });
-          return;
-        }
-
-        setSaveStatus({ kind: "saving" });
-
-        try {
-          await store.saveNotebook(preparedNotebook.notebook);
-          setSaveStatus({ kind: "saved" });
-        } catch (error: unknown) {
-          if (error instanceof NotebookConflictError) {
-            setSaveStatus({
-              kind: "conflict",
-              message: error.message
-            });
-            return;
-          }
-
-          if (error instanceof NotebookStorageUnavailableError) {
-            setNotebook(null);
-            setRecoveryState(null);
-            setSaveStatus({ kind: "idle" });
-            setLoadError({
-              kind: "unsupported-storage",
-              message: unsupportedStorageMessage(error)
-            });
-            return;
-          }
-
-          setSaveStatus({
-            kind: "failed",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Notebook changes could not be saved.",
-            unsavedNotebook: preparedNotebook.notebook
-          });
-        }
       } catch (error: unknown) {
         if (error instanceof NotebookRecoveryError) {
           setRecoveryState({
@@ -649,20 +497,16 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           throw new Error("Notebook Export file could not be read as text.");
         }
 
-        const importedNotebook = prepareNotebookForDrawingScreen(
-          parseNotebookExport(reader.result)
-        ).notebook;
-        const initialRoute = initialRouteForNotebook(importedNotebook, {
-          kind: "notebook"
-        });
+        const importedNotebook = parseNotebookExport(reader.result);
         await store.saveNotebook(importedNotebook);
         setNotebook(importedNotebook);
         setSaveStatus({ kind: "saved" });
         setNotebookExportJson("");
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
-        setRoute(initialRoute);
-        rememberLastOpenedPage(initialRoute);
+        window.history.pushState({}, "", "/");
+        setRootRoutePreference("notebook");
+        setRoute({ kind: "notebook" });
         setRecoveryState(null);
         setStatus({
           kind: "success",
@@ -723,22 +567,16 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const handleRecoveryStartFresh = () => {
     void (async () => {
       try {
-        const freshNotebook = prepareNotebookForDrawingScreen(
-          await store.startFreshNotebook()
-        ).notebook;
-        const initialRoute = initialRouteForNotebook(freshNotebook, {
-          kind: "notebook"
-        });
-
-        await store.saveNotebook(freshNotebook);
+        const freshNotebook = await store.startFreshNotebook();
         setNotebook(freshNotebook);
         setLoadError(null);
         setRecoveryState(null);
         setSaveStatus({ kind: "saved" });
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
-        setRoute(initialRoute);
-        rememberLastOpenedPage(initialRoute);
+        window.history.pushState({}, "", "/");
+        setRootRoutePreference("notebook");
+        setRoute({ kind: "notebook" });
         setBackupStatus({
           kind: "success",
           message:
@@ -792,6 +630,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     }));
 
     if (title.trim().length > 0) {
+      setRootRoutePreference("notebook");
       updateNotebook((currentNotebook) =>
         renameSection(currentNotebook, sectionId, title)
       );
@@ -799,6 +638,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handleSectionRemove = (sectionId: SectionId) => {
+    setRootRoutePreference("notebook");
     updateNotebook((currentNotebook) => removeSection(currentNotebook, sectionId));
     setSectionTitleDrafts((currentDrafts) => {
       const remainingDrafts = { ...currentDrafts };
@@ -811,6 +651,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     event.preventDefault();
 
     const title = newSectionTitle.trim() || DEFAULT_NEW_SECTION_TITLE;
+    setRootRoutePreference("notebook");
     updateNotebook((currentNotebook) =>
       addSection(currentNotebook, createSectionId(), title)
     );
@@ -833,18 +674,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     openPage(sectionId, pageId);
   };
 
-  const handlePageRename = (pageId: PageId, title: string) => {
-    if (title.trim().length === 0) {
-      return;
-    }
-
-    updateNotebook((currentNotebook) => renamePage(currentNotebook, pageId, title));
-  };
-
   const handleNotebookOpen = () => {
     window.history.pushState({}, "", "/");
-    setRoute({ kind: "notebook" });
     setHighlightedCanvasItemId(null);
+    setRoute({ kind: "notebook" });
   };
 
   const handleSearchResultOpen = (result: SearchResult) => {
@@ -898,19 +731,27 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   };
 
-  const handleLinkCardMetadataChange = (
+  const handleLinkCardTagsChange = (
     canvasItemId: CanvasItemId,
-    note: string,
     tagDraft: string
   ) => {
-    updateNotebook((currentNotebook) =>
-      updateLinkCardCanvasItemMetadata(
+    updateNotebook((currentNotebook) => {
+      const linkCard = currentNotebook.canvasItems.find(
+        (canvasItem): canvasItem is LinkCardCanvasItem =>
+          canvasItem.id === canvasItemId && canvasItem.type === "link-card"
+      );
+
+      if (linkCard === undefined) {
+        throw new Error("Cannot tag an unknown Link Card.");
+      }
+
+      return updateLinkCardCanvasItemMetadata(
         currentNotebook,
         canvasItemId,
-        note,
+        linkCard.note,
         tagsFromDraft(tagDraft)
-      )
-    );
+      );
+    });
   };
 
   const handleImageItemAdd = (
@@ -1029,9 +870,18 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const openPage = (sectionId: SectionId, pageId: PageId) => {
     const path = pagePath(sectionId, pageId);
     window.history.pushState({}, "", path);
-    const nextRoute: PageRoute = { kind: "page", sectionId, pageId };
-    setRoute(nextRoute);
-    rememberLastOpenedPage(nextRoute);
+    setLastOpenedPage(sectionId, pageId);
+    setRootRoutePreference("page");
+    setRoute({ kind: "page", sectionId, pageId });
+  };
+
+  const handleAiEnabledChange = (enabled: boolean) => {
+    try {
+      localStorage.setItem(AI_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+    } catch {
+      // Ignore storage errors while saving AI preference.
+    }
+    setAiEnabled(enabled);
   };
 
   if (recoveryState !== null) {
@@ -1079,50 +929,41 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   }
 
-  if (activePage?.kind === "found") {
+  if (route.kind === "page" && activePage !== null) {
     return (
-      <main className="drawing-screen" aria-labelledby="notebook-title">
-        <h1 id="notebook-title" className="visually-hidden">
-          {notebook.title}
-        </h1>
-        <CanvasToastStack
-          saveStatus={saveStatus}
-          saveToastVisibility={saveToastVisibility}
-          backupStatus={backupStatus}
-          onRetry={handleSaveRetry}
-          onConflictReload={handleConflictReload}
-        />
-        <ActivePageView
-          activePage={activePage}
-          notebook={notebook}
-          highlightedCanvasItemId={highlightedCanvasItemId}
-          notebookExportJson={notebookExportJson}
-          searchQuery={searchQuery}
-          searchResults={searchResults}
-          themePreference={themePreference}
-          isAiEnabled={isAiEnabled}
-          onThemePreferenceChange={setThemePreference}
-          onAiEnabledChange={setIsAiEnabled}
-          onNotebookExport={handleNotebookExport}
-          onNotebookImport={handleNotebookImport}
-          onSearchQueryChange={setSearchQuery}
-          onSearchResultOpen={handleSearchResultOpen}
-          onNotebookOpen={handleNotebookOpen}
-          onPageCreate={handlePageCreate}
-          onPageOpen={handlePageOpen}
-          onPageRename={handlePageRename}
-          onCodeBlockAdd={handleCodeBlockAdd}
-          onCodeBlockChange={handleCodeBlockChange}
-          onDiagramItemAdd={handleDiagramItemAdd}
-          onDiagramItemChange={handleDiagramItemChange}
-          onImageItemAdd={handleImageItemAdd}
-          onImageItemMetadataChange={handleImageItemMetadataChange}
-          onLinkCardAdd={handleLinkCardAdd}
-          onLinkCardMetadataChange={handleLinkCardMetadataChange}
-          onPageTextCanvasChange={handlePageTextCanvasChange}
-          onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
-        />
-      </main>
+      <DrawingScreen
+        activePage={activePage}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        saveStatus={saveStatus}
+        theme={theme}
+        onThemeChange={setTheme}
+        aiEnabled={aiEnabled}
+        onAiEnabledChange={handleAiEnabledChange}
+        onNotebookOpen={handleNotebookOpen}
+        onPageOpen={handlePageOpen}
+        onPageCreate={handlePageCreate}
+        onNotebookExport={handleNotebookExport}
+        onNotebookImport={handleNotebookImport}
+        notebookExportJson={notebookExportJson}
+        backupStatus={backupStatus}
+        onSaveRetry={handleSaveRetry}
+        onConflictReload={handleConflictReload}
+        onCodeBlockAdd={handleCodeBlockAdd}
+        onCodeBlockChange={handleCodeBlockChange}
+        onDiagramItemAdd={handleDiagramItemAdd}
+        onDiagramItemChange={handleDiagramItemChange}
+        onImageItemAdd={handleImageItemAdd}
+        onImageItemMetadataChange={handleImageItemMetadataChange}
+        onLinkCardAdd={handleLinkCardAdd}
+        onLinkCardTagsChange={handleLinkCardTagsChange}
+        onPageTextCanvasChange={handlePageTextCanvasChange}
+        onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
+        searchQuery={searchQuery}
+        searchResults={searchResults}
+        onSearchQueryChange={setSearchQuery}
+        onSearchResultOpen={handleSearchResultOpen}
+      />
     );
   }
 
@@ -1157,16 +998,15 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         </div>
       </section>
 
-      <CanvasToastStack
-        saveStatus={saveStatus}
-        saveToastVisibility={saveToastVisibility}
-        backupStatus={backupStatus}
+      <SaveStatusBanner
+        status={saveStatus}
         onRetry={handleSaveRetry}
         onConflictReload={handleConflictReload}
       />
 
       <NotebookBackupPanel
         exportJson={notebookExportJson}
+        status={backupStatus}
         onExport={handleNotebookExport}
         onImport={handleNotebookImport}
       />
@@ -1230,6 +1070,13 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         ) : null}
       </section>
 
+      <LocalSearch
+        query={searchQuery}
+        results={searchResults}
+        onQueryChange={setSearchQuery}
+        onResultOpen={handleSearchResultOpen}
+      />
+
       <section className="section-card" aria-labelledby="pages-title">
         <div className="section-card__header">
           <div>
@@ -1240,44 +1087,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             {notebook.pages.length} {notebook.pages.length === 1 ? "Page" : "Pages"}
           </p>
         </div>
-
-        {activePage === null ? (
-          <NotebookPages
-            notebook={notebook}
-            onPageOpen={handlePageOpen}
-          />
-        ) : (
-          <ActivePageView
-            activePage={activePage}
-            notebook={notebook}
-            highlightedCanvasItemId={highlightedCanvasItemId}
-            notebookExportJson={notebookExportJson}
-            searchQuery={searchQuery}
-            searchResults={searchResults}
-            themePreference={themePreference}
-            isAiEnabled={isAiEnabled}
-            onThemePreferenceChange={setThemePreference}
-            onAiEnabledChange={setIsAiEnabled}
-            onNotebookExport={handleNotebookExport}
-            onNotebookImport={handleNotebookImport}
-            onSearchQueryChange={setSearchQuery}
-            onSearchResultOpen={handleSearchResultOpen}
-            onNotebookOpen={handleNotebookOpen}
-            onPageCreate={handlePageCreate}
-            onPageOpen={handlePageOpen}
-            onPageRename={handlePageRename}
-            onCodeBlockAdd={handleCodeBlockAdd}
-            onCodeBlockChange={handleCodeBlockChange}
-            onDiagramItemAdd={handleDiagramItemAdd}
-            onDiagramItemChange={handleDiagramItemChange}
-            onImageItemAdd={handleImageItemAdd}
-            onImageItemMetadataChange={handleImageItemMetadataChange}
-            onLinkCardAdd={handleLinkCardAdd}
-            onLinkCardMetadataChange={handleLinkCardMetadataChange}
-            onPageTextCanvasChange={handlePageTextCanvasChange}
-            onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
-          />
-        )}
+        <NotebookPages
+          notebook={notebook}
+          onPageOpen={handlePageOpen}
+        />
       </section>
     </main>
   );
@@ -1362,12 +1175,14 @@ const downloadJsonFile = (json: string, fileName: string) => {
 
 interface NotebookBackupPanelProps {
   readonly exportJson: string;
+  readonly status: BackupStatus;
   readonly onExport: () => void;
   readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
 }
 
 const NotebookBackupPanel = ({
   exportJson,
+  status,
   onExport,
   onImport
 }: NotebookBackupPanelProps) => (
@@ -1398,6 +1213,18 @@ const NotebookBackupPanel = ({
         />
       </label>
     </div>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
     {exportJson.length > 0 ? (
       <label className="notebook-backup__json" htmlFor="notebook-export-json">
         Notebook Export JSON
@@ -1407,61 +1234,25 @@ const NotebookBackupPanel = ({
   </section>
 );
 
-interface CanvasToastStackProps {
-  readonly saveStatus: SaveStatus;
-  readonly saveToastVisibility: SaveToastVisibility;
-  readonly backupStatus: BackupStatus;
+interface SaveStatusBannerProps {
+  readonly status: SaveStatus;
   readonly onRetry: () => void;
   readonly onConflictReload: () => void;
 }
 
-const CanvasToastStack = ({
-  saveStatus,
-  saveToastVisibility,
-  backupStatus,
+const SaveStatusBanner = ({
+  status,
   onRetry,
   onConflictReload
-}: CanvasToastStackProps) => {
-  const hasVisibleSaveToast =
-    saveStatus.kind === "failed" ||
-    saveStatus.kind === "conflict" ||
-    (saveStatus.kind === "saving" && saveToastVisibility.showSlowSaving) ||
-    (saveStatus.kind === "saved" && saveToastVisibility.showSaved);
-
-  if (!hasVisibleSaveToast && backupStatus.kind === "idle") {
+}: SaveStatusBannerProps) => {
+  if (status.kind === "idle") {
     return null;
   }
 
-  return (
-    <div className="canvas-toast-stack" aria-label="Canvas Toasts">
-      <SaveStatusToast
-        status={saveStatus}
-        visibility={saveToastVisibility}
-        onRetry={onRetry}
-        onConflictReload={onConflictReload}
-      />
-      <BackupStatusToast status={backupStatus} />
-    </div>
-  );
-};
-
-interface SaveStatusToastProps {
-  readonly status: SaveStatus;
-  readonly visibility: SaveToastVisibility;
-  readonly onRetry: () => void;
-  readonly onConflictReload: () => void;
-}
-
-const SaveStatusToast = ({
-  status,
-  visibility,
-  onRetry,
-  onConflictReload
-}: SaveStatusToastProps) => {
   if (status.kind === "failed") {
     return (
       <section
-        className="canvas-toast canvas-toast--failed canvas-toast--sticky"
+        className="save-status save-status--failed"
         aria-label="Autosave status"
         role="alert"
       >
@@ -1483,7 +1274,7 @@ const SaveStatusToast = ({
   if (status.kind === "conflict") {
     return (
       <section
-        className="canvas-toast canvas-toast--failed canvas-toast--sticky"
+        className="save-status save-status--failed"
         aria-label="Autosave status"
         role="alert"
       >
@@ -1502,61 +1293,16 @@ const SaveStatusToast = ({
     );
   }
 
-  if (status.kind === "saving" && visibility.showSlowSaving) {
-    return (
-      <section
-        className="canvas-toast"
-        aria-label="Autosave status"
-        aria-live="polite"
-      >
-        <strong>Saving Notebook changes</strong>
-      </section>
-    );
-  }
-
-  if (status.kind === "saved" && visibility.showSaved) {
-    return (
-      <section
-        className="canvas-toast"
-        aria-label="Autosave status"
-        aria-live="polite"
-      >
-        <strong>Notebook changes saved</strong>
-      </section>
-    );
-  }
-
-  return null;
-};
-
-interface BackupStatusToastProps {
-  readonly status: BackupStatus;
-}
-
-const BackupStatusToast = ({ status }: BackupStatusToastProps) => {
-  if (status.kind === "idle") {
-    return null;
-  }
+  const message =
+    status.kind === "saving" ? "Saving Notebook changes" : "Notebook changes saved";
 
   return (
     <section
-      className={
-        status.kind === "failed"
-          ? "canvas-toast canvas-toast--failed canvas-toast--sticky"
-          : "canvas-toast"
-      }
-      aria-label="Notebook Export Canvas Toast"
-      role={status.kind === "failed" ? "alert" : "status"}
-      aria-live={status.kind === "failed" ? undefined : "polite"}
+      className="save-status"
+      aria-label="Autosave status"
+      aria-live="polite"
     >
-      <div>
-        <strong>
-          {status.kind === "failed"
-            ? "Notebook Export needs attention"
-            : "Notebook Export complete"}
-        </strong>
-        <p>{status.message}</p>
-      </div>
+      <strong>{message}</strong>
     </section>
   );
 };
@@ -1599,99 +1345,58 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
   );
 };
 
-interface ActivePageViewProps {
+interface DrawingScreenProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
-  readonly notebookExportJson: string;
-  readonly searchQuery: string;
-  readonly searchResults: readonly SearchResult[];
-  readonly themePreference: ThemePreference;
-  readonly isAiEnabled: boolean;
-  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
+  readonly saveStatus: SaveStatus;
+  readonly theme: Theme;
+  readonly onThemeChange: (theme: Theme) => void;
+  readonly aiEnabled: boolean;
   readonly onAiEnabledChange: (enabled: boolean) => void;
+  readonly onNotebookOpen: () => void;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
   readonly onNotebookExport: () => void;
   readonly onNotebookImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly notebookExportJson: string;
+  readonly backupStatus: BackupStatus;
+  readonly onSaveRetry: () => void;
+  readonly onConflictReload: () => void;
+  readonly onCodeBlockAdd: (pageId: PageId, code: string, tagDraft: string) => void;
+  readonly onCodeBlockChange: (canvasItemId: CanvasItemId, code: string, tagDraft: string) => void;
+  readonly onDiagramItemAdd: (pageId: PageId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onDiagramItemChange: (canvasItemId: CanvasItemId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onImageItemAdd: (pageId: PageId, dataUrl: string, mediaType: string, caption: string, tagDraft: string) => void;
+  readonly onImageItemMetadataChange: (canvasItemId: CanvasItemId, caption: string, tagDraft: string) => void;
+  readonly onLinkCardAdd: (pageId: PageId, url: string, note: string, tagDraft: string) => void;
+  readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onPageTextCanvasChange: (pageId: PageId, snapshot: PageTldrawCanvasSnapshot) => void;
+  readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly searchQuery: string;
+  readonly searchResults: readonly SearchResult[];
   readonly onSearchQueryChange: (query: string) => void;
   readonly onSearchResultOpen: (result: SearchResult) => void;
-  readonly onNotebookOpen: () => void;
-  readonly onPageCreate: (sectionId: SectionId) => void;
-  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
-  readonly onPageRename: (pageId: PageId, title: string) => void;
-  readonly onCodeBlockAdd: (
-    pageId: PageId,
-    code: string,
-    tagDraft: string
-  ) => void;
-  readonly onCodeBlockChange: (
-    canvasItemId: CanvasItemId,
-    code: string,
-    tagDraft: string
-  ) => void;
-  readonly onDiagramItemAdd: (
-    pageId: PageId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onDiagramItemChange: (
-    canvasItemId: CanvasItemId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onLinkCardAdd: (
-    pageId: PageId,
-    url: string,
-    note: string,
-    tagDraft: string
-  ) => void;
-  readonly onLinkCardMetadataChange: (
-    canvasItemId: CanvasItemId,
-    note: string,
-    tagDraft: string
-  ) => void;
-  readonly onImageItemAdd: (
-    pageId: PageId,
-    dataUrl: string,
-    mediaType: string,
-    caption: string,
-    tagDraft: string
-  ) => void;
-  readonly onImageItemMetadataChange: (
-    canvasItemId: CanvasItemId,
-    caption: string,
-    tagDraft: string
-  ) => void;
-  readonly onPageTextCanvasChange: (
-    pageId: PageId,
-    snapshot: PageTldrawCanvasSnapshot
-  ) => void;
-  readonly onTextCanvasItemTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
 }
 
-const ActivePageView = ({
+const DrawingScreen = ({
   activePage,
   notebook,
   highlightedCanvasItemId,
-  notebookExportJson,
-  searchQuery,
-  searchResults,
-  themePreference,
-   isAiEnabled,
-  onThemePreferenceChange,
+  saveStatus,
+  theme,
+  onThemeChange,
+  aiEnabled,
   onAiEnabledChange,
+  onNotebookOpen,
+  onPageOpen,
+  onPageCreate,
   onNotebookExport,
   onNotebookImport,
-  onSearchQueryChange,
-  onSearchResultOpen,
-  onNotebookOpen,
-  onPageCreate,
-  onPageOpen,
-  onPageRename,
+  notebookExportJson,
+  backupStatus,
+  onSaveRetry,
+  onConflictReload,
   onCodeBlockAdd,
   onCodeBlockChange,
   onDiagramItemAdd,
@@ -1699,695 +1404,762 @@ const ActivePageView = ({
   onImageItemAdd,
   onImageItemMetadataChange,
   onLinkCardAdd,
-  onLinkCardMetadataChange,
+  onLinkCardTagsChange,
   onPageTextCanvasChange,
-  onTextCanvasItemTagsChange
-}: ActivePageViewProps) => {
-  const [inspectedCanvasItemId, setInspectedCanvasItemId] =
-    useState<CanvasItemId | null>(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isNotebookDrawerOpen, setIsNotebookDrawerOpen] = useState(false);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  onTextCanvasItemTagsChange,
+  searchQuery,
+  searchResults,
+  onSearchQueryChange,
+  onSearchResultOpen
+}: DrawingScreenProps) => {
+  const effectiveTheme = getEffectiveTheme(theme);
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [showSlowSaveToast, setShowSlowSaveToast] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  useEffect(() => {
+    if (saveStatus.kind !== "saving") {
+      return;
+    }
+    const timer = setTimeout(() => setShowSlowSaveToast(true), 1500);
+    return () => {
+      clearTimeout(timer);
+      setShowSlowSaveToast(false);
+    };
+  }, [saveStatus.kind]);
+
+  useEffect(() => {
+    if (!showHamburgerMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setShowHamburgerMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showHamburgerMenu]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setShowHamburgerMenu(false);
+        setActiveModal(null);
+        setIsCommandPaletteOpen(true);
+        setCommandQuery("");
+        setActiveCommandIndex(0);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setShowHamburgerMenu(false);
+        setActiveModal(null);
+        setIsCommandPaletteOpen(false);
+        setIsDrawerOpen(false);
+        setIsSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const openCanvasModal = (modal: CanvasModalKind) => {
+    setShowHamburgerMenu(false);
+    setIsCommandPaletteOpen(false);
+    setIsDrawerOpen(false);
+    setIsSearchOpen(false);
+    setCommandQuery("");
+    setActiveCommandIndex(0);
+    setActiveModal(modal);
+  };
+
+  const closeCanvasModal = () => setActiveModal(null);
 
   if (activePage.kind === "invalid-section") {
     return (
-      <div className="page-canvas" role="alert">
-        <h3>Section not found</h3>
-        <p>
-          This Page URL points to a Section that is not in this Notebook:
-          {" "}{activePage.sectionId}
-        </p>
-        <button type="button" onClick={onNotebookOpen}>
-          Back to Notebook
-        </button>
-      </div>
+      <main className="drawing-screen" role="alert" aria-labelledby="ds-error-title">
+        <header className="drawing-screen__header">
+          <button type="button" className="drawing-screen__notebook-btn" onClick={onNotebookOpen}>
+            Notebook Management
+          </button>
+        </header>
+        <div className="drawing-screen__error">
+          <h2 id="ds-error-title">Section not found</h2>
+          <p>
+            This Page URL points to a Section that is not in this Notebook:
+            {" "}{activePage.sectionId}
+          </p>
+        </div>
+      </main>
     );
   }
 
   if (activePage.kind === "invalid-page") {
     return (
-      <div className="page-canvas" role="alert">
-        <h3>Page not found</h3>
-        <p>
-          {activePage.section.title} does not contain this Page:
-          {" "}{activePage.pageId}
-        </p>
-        <button type="button" onClick={onNotebookOpen}>
-          Back to Notebook
+      <main className="drawing-screen" role="alert" aria-labelledby="ds-error-title">
+        <header className="drawing-screen__header">
+          <button type="button" className="drawing-screen__notebook-btn" onClick={onNotebookOpen}>
+            Notebook Management
+          </button>
+        </header>
+        <div className="drawing-screen__error">
+          <h2 id="ds-error-title">Page not found</h2>
+          <p>
+            {activePage.section.title} does not contain this Page:
+            {" "}{activePage.pageId}
+          </p>
+        </div>
+      </main>
+    );
+  }
+  const { page, section } = activePage;
+  const pageTextItems = notebook.canvasItems.filter(
+    (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
+  );
+  const commandActions: readonly CommandAction[] = [
+    {
+      id: "toggle-drawer",
+      label: isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer",
+      description: "Browse Sections and Pages",
+      keywords: "drawer pages sections navigate browse",
+      run: () => setIsDrawerOpen((open) => !open)
+    },
+    {
+      id: "search-notebook",
+      label: "Search Notebook",
+      description: "Find Canvas Items by keyword",
+      keywords: "search notebook find keyword canvas items",
+      run: () => setIsSearchOpen(true)
+    },
+    {
+      id: "rename-sections",
+      label: "Rename Sections",
+      description: "Use Notebook Management",
+      keywords: "rename section notebook management",
+      run: onNotebookOpen
+    },
+    ...notebook.pages.map((notebookPage) => {
+      const notebookSection = getSection(notebook, notebookPage.sectionId);
+
+      return {
+        id: `page-${notebookPage.id}`,
+        label: `Switch Page: ${notebookPage.title}`,
+        description: notebookSection?.title ?? "Unknown Section",
+        keywords: `switch page ${notebookPage.title} ${notebookSection?.title ?? ""}`,
+        run: () => onPageOpen(notebookPage.sectionId, notebookPage.id)
+      };
+    }),
+    ...notebook.sections.map((notebookSection) => ({
+      id: `new-page-${notebookSection.id}`,
+      label: `New Page in ${notebookSection.title}`,
+      description: "Create and open a blank page",
+      keywords: `new page create ${notebookSection.title}`,
+      run: () => onPageCreate(notebookSection.id)
+    })),
+    {
+      id: "export-notebook",
+      label: "Export Notebook Backup",
+      description: "Open export modal",
+      keywords: "export backup notebook",
+      run: () => openCanvasModal("export")
+    },
+    {
+      id: "import-notebook",
+      label: "Import Notebook Export",
+      description: "Open import modal",
+      keywords: "import backup notebook",
+      run: () => openCanvasModal("import")
+    },
+    {
+      id: "keyboard-shortcuts",
+      label: "Keyboard Shortcuts",
+      description: "Open shortcuts modal",
+      keywords: "keyboard shortcuts help",
+      run: () => openCanvasModal("shortcuts")
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      description: "Open settings modal",
+      keywords: "settings preferences",
+      run: () => openCanvasModal("settings")
+    }
+  ];
+
+  return (
+    <main className="drawing-screen" aria-labelledby="ds-notebook-title">
+      <header className="drawing-screen__header">
+        <div className="drawing-screen__menu-wrap" ref={menuRef}>
+          <button
+            type="button"
+            className="hamburger-btn"
+            aria-label="Open notebook menu"
+            aria-expanded={showHamburgerMenu}
+            aria-haspopup="menu"
+            onClick={() => setShowHamburgerMenu((current) => !current)}
+          >
+            ≡
+          </button>
+          {showHamburgerMenu ? (
+            <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
+              <div className="hamburger-menu__section">
+                <span className="hamburger-menu__label">Theme</span>
+                <div className="theme-picker" role="group" aria-label="Theme picker">
+                  {(["system", "light", "dark"] as const).map((themeOption) => (
+                    <button
+                      key={themeOption}
+                      type="button"
+                      className={
+                        theme === themeOption
+                          ? "theme-picker__option theme-picker__option--active"
+                          : "theme-picker__option"
+                      }
+                      aria-pressed={theme === themeOption}
+                      onClick={() => {
+                        onThemeChange(themeOption);
+                        setShowHamburgerMenu(false);
+                      }}
+                    >
+                      {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("shortcuts")}
+              >
+                Keyboard Shortcuts
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("settings")}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("export")}
+              >
+                Export Notebook Backup
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("import")}
+              >
+                Import Notebook Export
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="drawing-screen__drawer-btn"
+          aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+          aria-expanded={isDrawerOpen}
+          onClick={() => setIsDrawerOpen((open) => !open)}
+        >
+          Pages
+        </button>
+        <button
+          type="button"
+          className="drawing-screen__notebook-btn"
+          onClick={onNotebookOpen}
+        >
+          Notebook Management
+        </button>
+        <button
+          type="button"
+          className="drawing-screen__search-btn"
+          onClick={() => setIsSearchOpen(true)}
+        >
+          Search Notebook
+        </button>
+        <h1 id="ds-notebook-title" className="drawing-screen__notebook-title">
+          {notebook.title}
+        </h1>
+        <div className="drawing-screen__page-crumb">
+          <span className="drawing-screen__section-name">{section.title}</span>
+          <h2 className="drawing-screen__page-title">{page.title}</h2>
+        </div>
+        <button
+          type="button"
+          className="drawing-screen__items-btn"
+          onClick={() => openCanvasModal("inspector")}
+        >
+          Canvas Items
+        </button>
+        <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
+          Private Notebook
+        </span>
+      </header>
+      <div className="drawing-screen__body">
+        <div className="drawing-screen__canvas-area">
+          <PageTextCanvas
+            page={page}
+            notebook={notebook}
+            highlightedCanvasItemId={highlightedCanvasItemId}
+            theme={effectiveTheme}
+            onPageTextCanvasChange={onPageTextCanvasChange}
+          />
+        </div>
+        <NotebookDrawer
+          isOpen={isDrawerOpen}
+          notebook={notebook}
+          currentPageId={page.id}
+          onPageOpen={(sectionId, pageId) => {
+            setIsDrawerOpen(false);
+            onPageOpen(sectionId, pageId);
+          }}
+          onPageCreate={(sectionId) => {
+            setIsDrawerOpen(false);
+            onPageCreate(sectionId);
+          }}
+          onClose={() => setIsDrawerOpen(false)}
+        />
+      </div>
+      <CommandPalette
+        actions={commandActions}
+        activeIndex={activeCommandIndex}
+        isOpen={isCommandPaletteOpen}
+        query={commandQuery}
+        onActiveIndexChange={setActiveCommandIndex}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onQueryChange={setCommandQuery}
+      />
+      <CanvasModal
+        isOpen={activeModal === "shortcuts"}
+        title="Keyboard Shortcuts"
+        onClose={closeCanvasModal}
+      >
+        <ShortcutsModalContent />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "settings"}
+        title="Settings"
+        onClose={closeCanvasModal}
+      >
+        <SettingsModalContent aiEnabled={aiEnabled} onAiEnabledChange={onAiEnabledChange} />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "export"}
+        title="Export Notebook Backup"
+        onClose={closeCanvasModal}
+      >
+        <NotebookExportModalContent
+          exportJson={notebookExportJson}
+          status={backupStatus}
+          onExport={onNotebookExport}
+        />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "import"}
+        title="Import Notebook Export"
+        onClose={closeCanvasModal}
+      >
+        <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "inspector"}
+        title="Canvas Items"
+        onClose={closeCanvasModal}
+        scrollable
+      >
+        <ItemInspectorContent
+          page={page}
+          notebook={notebook}
+          pageTextItems={pageTextItems}
+          highlightedCanvasItemId={highlightedCanvasItemId}
+          onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
+          onLinkCardAdd={onLinkCardAdd}
+          onLinkCardTagsChange={onLinkCardTagsChange}
+          onImageItemAdd={onImageItemAdd}
+          onImageItemMetadataChange={onImageItemMetadataChange}
+          onDiagramItemAdd={onDiagramItemAdd}
+          onDiagramItemChange={onDiagramItemChange}
+          onCodeBlockAdd={onCodeBlockAdd}
+          onCodeBlockChange={onCodeBlockChange}
+        />
+      </CanvasModal>
+      <CanvasToastArea
+        saveStatus={saveStatus}
+        showSlowSaveToast={showSlowSaveToast}
+        backupStatus={backupStatus}
+        onSaveRetry={onSaveRetry}
+        onConflictReload={onConflictReload}
+      />
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        query={searchQuery}
+        results={searchResults}
+        notebook={notebook}
+        onQueryChange={onSearchQueryChange}
+        onResultOpen={onSearchResultOpen}
+        onClose={() => { setIsSearchOpen(false); onSearchQueryChange(""); }}
+      />
+      {aiEnabled ? <AssistantBubble /> : null}
+    </main>
+  );
+};
+
+// Section colors for visual differentiation in the Notebook Drawer.
+const SECTION_COLORS = [
+  "#6952c7",
+  "#1a7a4c",
+  "#c75219",
+  "#2152b5",
+  "#8a4a9e",
+  "#7a5219"
+] as const;
+
+interface NotebookDrawerProps {
+  readonly isOpen: boolean;
+  readonly notebook: Notebook;
+  readonly currentPageId: PageId;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
+  readonly onClose: () => void;
+}
+
+const NotebookDrawer = ({
+  isOpen,
+  notebook,
+  currentPageId,
+  onPageOpen,
+  onPageCreate,
+  onClose
+}: NotebookDrawerProps) => (
+  <>
+    {isOpen ? (
+      <div
+        className="notebook-drawer-backdrop"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+    ) : null}
+    <aside
+      className={isOpen ? "notebook-drawer notebook-drawer--open" : "notebook-drawer"}
+      aria-label="Notebook Drawer"
+      aria-hidden={!isOpen}
+    >
+      <div className="notebook-drawer__header">
+        <span className="notebook-drawer__title">Pages</span>
+        <button
+          type="button"
+          className="notebook-drawer__close"
+          aria-label="Close Notebook Drawer"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      {isOpen ? (
+        <nav className="notebook-drawer__tree" aria-label="Sections and Pages">
+          {notebook.sections.length === 0 ? (
+            <p className="notebook-drawer__empty">No Sections yet.</p>
+          ) : (
+            notebook.sections.map((section, index) => {
+              const sectionColor = SECTION_COLORS[index % SECTION_COLORS.length];
+              const sectionPages = notebook.pages.filter(
+                (page) => page.sectionId === section.id
+              );
+
+              return (
+                <div key={section.id} className="notebook-drawer__section">
+                  <div
+                    className="notebook-drawer__section-header"
+                    style={{ borderLeftColor: sectionColor }}
+                  >
+                    <span
+                      className="notebook-drawer__section-name"
+                      style={{ color: sectionColor }}
+                    >
+                      {section.title}
+                    </span>
+                    <button
+                      type="button"
+                      className="notebook-drawer__new-page-btn"
+                      aria-label={`New Page in ${section.title}`}
+                      title={`New Page in ${section.title}`}
+                      onClick={() => onPageCreate(section.id)}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {sectionPages.length === 0 ? (
+                    <p className="notebook-drawer__no-pages">No Pages yet</p>
+                  ) : (
+                    <ul className="notebook-drawer__pages">
+                      {sectionPages.map((page) => (
+                        <li key={page.id}>
+                          <button
+                            type="button"
+                            className={
+                              page.id === currentPageId
+                                ? "notebook-drawer__page-btn notebook-drawer__page-btn--active"
+                                : "notebook-drawer__page-btn"
+                            }
+                            aria-current={page.id === currentPageId ? "page" : undefined}
+                            onClick={() => onPageOpen(page.sectionId, page.id)}
+                          >
+                            {page.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </nav>
+      ) : null}
+    </aside>
+  </>
+);
+
+const AssistantBubble = () => (
+  <button type="button" className="assistant-bubble" aria-label="Open Notebook Assistant">
+    Ask Notebook Assistant
+  </button>
+);
+
+interface CanvasToastAreaProps {
+  readonly saveStatus: SaveStatus;
+  readonly showSlowSaveToast: boolean;
+  readonly backupStatus: BackupStatus;
+  readonly onSaveRetry: () => void;
+  readonly onConflictReload: () => void;
+}
+
+const CanvasToastArea = ({
+  saveStatus,
+  showSlowSaveToast,
+  backupStatus,
+  onSaveRetry,
+  onConflictReload
+}: CanvasToastAreaProps) => {
+  const toasts: ReactNode[] = [];
+
+  if (showSlowSaveToast && saveStatus.kind === "saving") {
+    toasts.push(
+      <div key="saving" className="canvas-toast canvas-toast--info" aria-live="polite">
+        Saving Notebook changes…
+      </div>
+    );
+  }
+
+  if (saveStatus.kind === "failed") {
+    toasts.push(
+      <div key="save-failed" className="canvas-toast canvas-toast--error" role="alert">
+        <span>Autosave failed — your edits are not yet persisted. Retry before closing this tab.</span>
+        <button type="button" className="canvas-toast__action" onClick={onSaveRetry}>
+          Retry Save
         </button>
       </div>
     );
   }
 
-  const pageCanvasItems = notebook.canvasItems.filter(
-    (canvasItem): canvasItem is InspectableCanvasItem =>
-      canvasItem.pageId === activePage.page.id &&
-      canvasItem.type !== "freehand-drawing"
-  );
-  const inspectedCanvasItem =
-    inspectedCanvasItemId === null
-      ? null
-      : (pageCanvasItems.find(
-          (canvasItem) => canvasItem.id === inspectedCanvasItemId
-        ) ?? null);
-
-  return (
-    <article className="page-canvas" aria-labelledby="active-page-title">
-      <header className="drawing-screen__header">
-        <div>
-          <p className="eyebrow">Current Page</p>
-          <h2
-            id="active-page-title"
-            className="page-title-affordance"
-            aria-label={activePage.page.title}
-          >
-            <span aria-hidden="true">📄</span>
-            <span className="page-title-affordance__section">
-              {activePage.section.title}
-            </span>
-            <span aria-hidden="true">/</span>
-            <span>{activePage.page.title}</span>
-          </h2>
-          <p>
-            Use tldraw text and draw tools for rough interview-prep work. Text
-            Canvas Items are searchable; Freehand Drawings autosave and reload for
-            navigation without OCR or handwriting search.
-          </p>
-          <p>Page Type: unset</p>
-        </div>
-        <div className="canvas-actions">
-          <button
-            type="button"
-            aria-expanded={isNotebookDrawerOpen}
-            aria-controls="notebook-drawer"
-            onClick={() => setIsNotebookDrawerOpen(true)}
-          >
-            Open Notebook Drawer
-          </button>
-          <button
-            type="button"
-            aria-expanded={isMenuOpen}
-            aria-controls="canvas-hamburger-menu"
-            onClick={() => setIsMenuOpen((current) => !current)}
-          >
-            Notebook Menu
-          </button>
-          <button
-            type="button"
-            className="search-control-button"
-            onClick={() => setActiveModal("search")}
-          >
-            Open Search Overlay
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsCommandPaletteOpen(true)}
-          >
-            Command Palette
-          </button>
-        </div>
-      </header>
-      {isNotebookDrawerOpen ? (
-        <NotebookDrawer
-          notebook={notebook}
-          currentPageId={activePage.page.id}
-          onClose={() => setIsNotebookDrawerOpen(false)}
-          onPageCreate={(sectionId) => {
-            onPageCreate(sectionId);
-            setIsNotebookDrawerOpen(false);
-          }}
-          onPageOpen={(sectionId, pageId) => {
-            onPageOpen(sectionId, pageId);
-            setIsNotebookDrawerOpen(false);
-          }}
-        />
-      ) : null}
-      {isMenuOpen ? (
-        <CanvasHamburgerMenu
-          activeTheme={themePreference}
-          onClose={() => setIsMenuOpen(false)}
-          onNotebookOpen={onNotebookOpen}
-          onModalOpen={(modal) => {
-            setActiveModal(modal);
-            setIsMenuOpen(false);
-          }}
-          onThemePreferenceChange={onThemePreferenceChange}
-        />
-      ) : null}
-      {isCommandPaletteOpen ? (
-        <CommandPalette
-          isAiEnabled={isAiEnabled}
-          onClose={() => setIsCommandPaletteOpen(false)}
-          onCreatePage={() => {
-            onPageCreate(activePage.section.id);
-            setIsCommandPaletteOpen(false);
-          }}
-          onModalOpen={(modal) => {
-            setActiveModal(modal);
-            setIsCommandPaletteOpen(false);
-          }}
-        />
-      ) : null}
-      {activeModal === "search" ? (
-        <CanvasModal title="Search Notebook" onClose={() => setActiveModal(null)}>
-          <DrawingScreenSearch
-            query={searchQuery}
-            results={searchResults}
-            onQueryChange={onSearchQueryChange}
-            onResultOpen={(result) => {
-              onSearchResultOpen(result);
-              setActiveModal(null);
-            }}
-          />
-        </CanvasModal>
-      ) : null}
-      {activeModal === "assistant" ? (
-        <CanvasModal title="Notebook Assistant" onClose={() => setActiveModal(null)}>
-          <NotebookAssistantPanel />
-        </CanvasModal>
-      ) : null}
-      {activeModal === "pages" ? (
-        <CanvasModal title="Page Switcher" onClose={() => setActiveModal(null)}>
-          <PageSwitcher
-            notebook={notebook}
-            currentPageId={activePage.page.id}
-            onCreatePage={() => {
-              onPageCreate(activePage.section.id);
-              setActiveModal(null);
-            }}
-            onPageOpen={(sectionId, pageId) => {
-              onPageOpen(sectionId, pageId);
-              setActiveModal(null);
-            }}
-          />
-        </CanvasModal>
-      ) : null}
-      {activeModal === "backup" ? (
-        <CanvasModal title="Notebook Export and Import" onClose={() => setActiveModal(null)}>
-          <NotebookBackupPanel
-            exportJson={notebookExportJson}
-            onExport={onNotebookExport}
-            onImport={onNotebookImport}
-          />
-        </CanvasModal>
-      ) : null}
-      {activeModal === "settings" ? (
-        <CanvasModal title="Notebook Settings" onClose={() => setActiveModal(null)}>
-          <SettingsPanel
-            activePage={activePage.page}
-            themePreference={themePreference}
-            isAiEnabled={isAiEnabled}
-            onPageRename={onPageRename}
-            onAiEnabledChange={onAiEnabledChange}
-            onThemePreferenceChange={onThemePreferenceChange}
-          />
-        </CanvasModal>
-      ) : null}
-      {activeModal === "shortcuts" ? (
-        <CanvasModal title="Shortcuts" onClose={() => setActiveModal(null)}>
-          <ShortcutsPanel />
-        </CanvasModal>
-      ) : null}
-      <PageTextCanvas
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        showEmptyCanvasPrompts={
-          activePage.page.id === DEFAULT_PAGE_ID &&
-          !notebook.canvasItems.some(
-            (canvasItem) => canvasItem.pageId === activePage.page.id
-          )
-        }
-        onPageTextCanvasChange={onPageTextCanvasChange}
-      />
-      <PageLinkCards
-        page={activePage.page}
-        onLinkCardAdd={onLinkCardAdd}
-      />
-      <PageImageItems
-        page={activePage.page}
-        onImageItemAdd={onImageItemAdd}
-      />
-      <PageDiagramItems
-        page={activePage.page}
-        onDiagramItemAdd={onDiagramItemAdd}
-      />
-      <PageCodeBlocks
-        page={activePage.page}
-        onCodeBlockAdd={onCodeBlockAdd}
-      />
-      <CanvasItemCards
-        canvasItems={pageCanvasItems}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onInspect={setInspectedCanvasItemId}
-      />
-      {isAiEnabled ? (
-        <AssistantBubble onOpen={() => setActiveModal("assistant")} />
-      ) : null}
-      {inspectedCanvasItem !== null ? (
-        <ItemInspector
-          canvasItem={inspectedCanvasItem}
-          onClose={() => setInspectedCanvasItemId(null)}
-          onCodeBlockChange={onCodeBlockChange}
-          onDiagramItemChange={onDiagramItemChange}
-          onImageItemMetadataChange={onImageItemMetadataChange}
-          onLinkCardMetadataChange={onLinkCardMetadataChange}
-          onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
-        />
-      ) : null}
-    </article>
-  );
-};
-
-interface NotebookDrawerProps {
-  readonly notebook: Notebook;
-  readonly currentPageId: PageId;
-  readonly onClose: () => void;
-  readonly onPageCreate: (sectionId: SectionId) => void;
-  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
-}
-
-const NotebookDrawer = ({
-  notebook,
-  currentPageId,
-  onClose,
-  onPageCreate,
-  onPageOpen
-}: NotebookDrawerProps) => (
-  <aside
-    id="notebook-drawer"
-    className="notebook-drawer"
-    role="complementary"
-    aria-label="Notebook Drawer"
-  >
-    <div className="notebook-drawer__header">
-      <div>
-        <p className="eyebrow">Notebook Drawer</p>
-        <h3>Sections and Pages</h3>
-      </div>
-      <button type="button" className="remove-button" onClick={onClose}>
-        Close Drawer
-      </button>
-    </div>
-    <ul className="notebook-drawer__tree" aria-label="Sections and Pages">
-      {notebook.sections.map((section, sectionIndex) => {
-        const pages = notebook.pages.filter((page) => page.sectionId === section.id);
-
-        return (
-          <li
-            className="notebook-drawer__section"
-            key={section.id}
-            style={
-              {
-                "--section-color": drawerSectionColor(sectionIndex)
-              } as CSSProperties
-            }
-          >
-            <div className="notebook-drawer__section-header">
-              <span className="notebook-drawer__section-title">
-                <span aria-hidden="true">●</span>
-                {section.title}
-              </span>
-              <button
-                type="button"
-                onClick={() => onPageCreate(section.id)}
-                aria-label={`Create Page in ${section.title}`}
-              >
-                + Page
-              </button>
-            </div>
-            <details className="notebook-drawer__context">
-              <summary aria-label={`${section.title} context menu`}>
-                Section context
-              </summary>
-              <button
-                type="button"
-                onClick={() => onPageCreate(section.id)}
-              >
-                Create Page from {section.title} context
-              </button>
-            </details>
-            {pages.length > 0 ? (
-              <ul className="notebook-drawer__pages" aria-label={`${section.title} Pages`}>
-                {pages.map((page) => (
-                  <li key={page.id}>
-                    <button
-                      type="button"
-                      className="notebook-drawer__page"
-                      aria-current={page.id === currentPageId ? "page" : undefined}
-                      onClick={() => onPageOpen(section.id, page.id)}
-                    >
-                      <span aria-hidden="true">◇</span>
-                      {page.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="notebook-drawer__empty">No Pages in this Section.</p>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  </aside>
-);
-
-interface CanvasHamburgerMenuProps {
-  readonly activeTheme: ThemePreference;
-  readonly onClose: () => void;
-  readonly onModalOpen: (modal: CanvasModalKind) => void;
-  readonly onNotebookOpen: () => void;
-  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
-}
-
-const CanvasHamburgerMenu = ({
-  activeTheme,
-  onClose,
-  onModalOpen,
-  onNotebookOpen,
-  onThemePreferenceChange
-}: CanvasHamburgerMenuProps) => (
-  <nav
-    id="canvas-hamburger-menu"
-    className="canvas-hamburger-menu"
-    aria-label="Notebook Menu"
-  >
-    <button type="button" onClick={() => onModalOpen("settings")}>
-      Settings
-    </button>
-    <button
-      type="button"
-      onClick={() => onThemePreferenceChange(nextThemePreference(activeTheme))}
-    >
-      Theme: {themePreferenceLabel(activeTheme)}
-    </button>
-    <button type="button" onClick={() => onModalOpen("backup")}>
-      Notebook Export and Import
-    </button>
-    <button type="button" onClick={() => onModalOpen("shortcuts")}>
-      Shortcuts
-    </button>
-    <button
-      type="button"
-      onClick={() => {
-        onNotebookOpen();
-        onClose();
-      }}
-    >
-      Notebook Management Screen
-    </button>
-    <button type="button" className="remove-button" onClick={onClose}>
-      Close Menu
-    </button>
-  </nav>
-);
-
-interface CommandPaletteProps {
-  readonly isAiEnabled: boolean;
-  readonly onClose: () => void;
-  readonly onCreatePage: () => void;
-  readonly onModalOpen: (modal: CanvasModalKind) => void;
-}
-
-const CommandPalette = ({
-  isAiEnabled,
-  onClose,
-  onCreatePage,
-  onModalOpen
-}: CommandPaletteProps) => (
-  <CanvasModal title="Command Palette" onClose={onClose}>
-    <div className="command-palette" aria-label="Command Palette actions">
-      <button type="button" onClick={() => onModalOpen("search")}>
-        Search Notebook
-      </button>
-      <button type="button" onClick={() => onModalOpen("pages")}>
-        Switch or create Page
-      </button>
-      <button type="button" onClick={onCreatePage}>
-        Create Page in current Section
-      </button>
-      <button type="button" onClick={() => onModalOpen("settings")}>
-        Rename current Page
-      </button>
-      <button type="button" onClick={() => onModalOpen("backup")}>
-        Notebook Export and Import
-      </button>
-      <button type="button" onClick={() => onModalOpen("settings")}>
-        Settings
-      </button>
-      {isAiEnabled ? (
-        <button type="button" onClick={() => onModalOpen("assistant")}>
-          Ask Notebook Assistant
-        </button>
-      ) : null}
-      <button type="button" onClick={() => onModalOpen("shortcuts")}>
-        Shortcuts
-      </button>
-    </div>
-  </CanvasModal>
-);
-
-interface CanvasModalProps {
-  readonly title: string;
-  readonly children: ReactNode;
-  readonly onClose: () => void;
-}
-
-const CanvasModal = ({ title, children, onClose }: CanvasModalProps) => (
-  <div className="canvas-modal-backdrop" role="presentation">
-    <section
-      className="canvas-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`canvas-modal-${idFromLabel(title)}`}
-    >
-      <div className="canvas-modal__header">
-        <div>
-          <p className="eyebrow">Canvas Modal</p>
-          <h3 id={`canvas-modal-${idFromLabel(title)}`}>{title}</h3>
-        </div>
-        <button type="button" onClick={onClose}>
-          Close Modal
+  if (saveStatus.kind === "conflict") {
+    toasts.push(
+      <div key="conflict" className="canvas-toast canvas-toast--error" role="alert">
+        <span>Another tab changed this Notebook — autosave is paused.</span>
+        <button type="button" className="canvas-toast__action" onClick={onConflictReload}>
+          Reload Stored Notebook
         </button>
       </div>
-      {children}
-    </section>
-  </div>
-);
+    );
+  }
 
-interface PageSwitcherProps {
-  readonly notebook: Notebook;
-  readonly currentPageId: PageId;
-  readonly onCreatePage: () => void;
-  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
-}
+  if (backupStatus.kind === "success") {
+    toasts.push(
+      <div key="backup-success" className="canvas-toast canvas-toast--success" role="status">
+        {backupStatus.message}
+      </div>
+    );
+  }
 
-const PageSwitcher = ({
-  notebook,
-  currentPageId,
-  onCreatePage,
-  onPageOpen
-}: PageSwitcherProps) => (
-  <div className="page-switcher">
-    <button type="button" onClick={onCreatePage}>
-      New Page in current Section
-    </button>
-    <ul className="page-list" aria-label="Page Switcher Pages">
-      {notebook.pages.map((page) => {
-        const section = getSection(notebook, page.sectionId);
+  if (backupStatus.kind === "failed") {
+    toasts.push(
+      <div key="backup-failed" className="canvas-toast canvas-toast--error" role="alert">
+        {backupStatus.message}
+      </div>
+    );
+  }
 
-        return (
-          <li className="page-row" key={page.id}>
-            <div>
-              <strong>{page.title}</strong>
-              <span>
-                {section?.title ?? "Unknown Section"}
-                {page.id === currentPageId ? " - current Page" : ""}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onPageOpen(page.sectionId, page.id)}
-            >
-              Open Page
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  </div>
-);
-
-interface SettingsPanelProps {
-  readonly activePage: Page;
-  readonly themePreference: ThemePreference;
-  readonly isAiEnabled: boolean;
-  readonly onPageRename: (pageId: PageId, title: string) => void;
-  readonly onAiEnabledChange: (enabled: boolean) => void;
-  readonly onThemePreferenceChange: (preference: ThemePreference) => void;
-}
-
-const SettingsPanel = ({
-  activePage,
-  themePreference,
-  isAiEnabled,
-  onPageRename,
-  onAiEnabledChange,
-  onThemePreferenceChange
-}: SettingsPanelProps) => {
-  const [pageTitleDraft, setPageTitleDraft] = useState(activePage.title);
+  if (toasts.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="settings-panel">
-      <label htmlFor="theme-preference">
-        Theme
-        <select
-          id="theme-preference"
-          value={themePreference}
-          onChange={(event) =>
-            onThemePreferenceChange(event.target.value as ThemePreference)
-          }
-        >
-          <option value="system">System with dark fallback</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </label>
-      <label htmlFor="active-page-title-setting">
-        Current Page title
-        <input
-          id="active-page-title-setting"
-          value={pageTitleDraft}
-          onChange={(event) => {
-            setPageTitleDraft(event.target.value);
-            onPageRename(activePage.id, event.target.value);
-          }}
-        />
-      </label>
-      <label className="settings-panel__checkbox" htmlFor="ai-enabled-setting">
-        <input
-          id="ai-enabled-setting"
-          type="checkbox"
-          checked={isAiEnabled}
-          onChange={(event) => onAiEnabledChange(event.target.checked)}
-        />
-        Enable AI affordances
-      </label>
-      <p>
-        Notebook material remains private by default; connected features stay out
-        of the Drawing Screen until explicitly configured.
-      </p>
-      <p>
-        Automatic image and screenshot summaries stay disabled unless a future
-        explicit summarization setting enables them.
-      </p>
+    <div className="canvas-toast-area" aria-label="Notebook notifications">
+      {toasts}
     </div>
   );
 };
 
-const AssistantBubble = ({ onOpen }: { readonly onOpen: () => void }) => (
-  <button type="button" className="assistant-bubble" onClick={onOpen}>
-    Notebook Assistant
-  </button>
-);
-
-const NotebookAssistantPanel = () => (
-  <div className="assistant-panel">
-    <p>
-      The Notebook Assistant is available because AI affordances are enabled.
-      This MVP shell does not make runtime network calls until a provider is
-      explicitly configured.
-    </p>
-  </div>
-);
-
-const ShortcutsPanel = () => (
-  <div className="shortcuts-panel">
-    <p>Use Command Palette for search, Page switching, creation, settings, and backup.</p>
-    <p>Use the Notebook Menu for settings, theme, Notebook Export, Notebook Import, and shortcuts.</p>
-    <p>Use Text Tool and Draw Tool buttons to switch capture modes on the canvas.</p>
-  </div>
-);
-
-interface DrawingScreenSearchProps {
+interface SearchOverlayProps {
+  readonly isOpen: boolean;
   readonly query: string;
   readonly results: readonly SearchResult[];
+  readonly notebook: Notebook;
   readonly onQueryChange: (query: string) => void;
   readonly onResultOpen: (result: SearchResult) => void;
+  readonly onClose: () => void;
 }
 
-const DrawingScreenSearch = ({
+const SearchOverlay = ({
+  isOpen,
   query,
   results,
+  notebook,
   onQueryChange,
-  onResultOpen
-}: DrawingScreenSearchProps) => {
-  const groupedResults = groupSearchResultsByPage(results);
+  onResultOpen,
+  onClose
+}: SearchOverlayProps) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  const groupedResults = useMemo(() => {
+    interface GroupEntry {
+      readonly pageId: PageId;
+      readonly pageTitle: string;
+      readonly sectionTitle: string;
+      readonly results: SearchResult[];
+    }
+    const groups = new Map<PageId, GroupEntry>();
+
+    for (const result of results) {
+      if (!groups.has(result.pageId)) {
+        const page = notebook.pages.find((p) => p.id === result.pageId);
+        const section = notebook.sections.find((s) => s.id === result.sectionId);
+        groups.set(result.pageId, {
+          pageId: result.pageId,
+          pageTitle: page?.title ?? "Unknown Page",
+          sectionTitle: section?.title ?? "Unknown Section",
+          results: []
+        });
+      }
+      groups.get(result.pageId)?.results.push(result);
+    }
+
+    return Array.from(groups.values());
+  }, [results, notebook]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const handleResultOpen = (result: SearchResult) => {
+    onQueryChange("");
+    onClose();
+    onResultOpen(result);
+  };
 
   return (
-    <section className="drawing-screen-search" aria-labelledby="drawing-search-title">
-      <div>
-        <p className="eyebrow">Local Index</p>
-        <h3 id="drawing-search-title">Ask/Search Notebook</h3>
-        <p>
-          Searches text, Code Blocks, Link Card URLs and notes, captions, Tags,
-          Page titles, and generated summaries when present. Freehand Drawing is
-          not searched in this MVP.
-        </p>
-      </div>
-      <label className="search-field" htmlFor="notebook-search">
-        Search Canvas Items, Tags, Page titles, and Section paths
-        <input
-          id="notebook-search"
-          value={query}
-          placeholder="e.g. binary search invariant"
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </label>
-      {query.trim().length > 0 && results.length === 0 ? (
-        <p className="empty-state">No Search Results found in this Notebook.</p>
-      ) : null}
-      {groupedResults.length > 0 ? (
-        <div className="search-result-groups" aria-label="Search Results by Page">
-          {groupedResults.map((group) => (
-            <section
-              className="search-result-group"
-              key={group.pageId}
-              aria-labelledby={`search-results-${group.pageId}`}
-            >
-              <div className="search-result-group__header">
-                <h4 id={`search-results-${group.pageId}`}>{group.notebookPath}</h4>
-                <span>
-                  {group.results.length}{" "}
-                  {group.results.length === 1 ? "result" : "results"}
-                </span>
-              </div>
-              <ul className="search-results" aria-label={`${group.notebookPath} Search Results`}>
-                {group.results.map((result) => (
-                  <li className="search-result" key={result.id}>
-                    <div>
-                      <span>{result.sourceLabel}</span>
-                      {result.matchedTags.length > 0 ? (
-                        <span>
-                          Matched Tags:{" "}
-                          {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
-                        </span>
-                      ) : null}
-                      <p>{result.snippet}</p>
-                    </div>
-                    <button type="button" onClick={() => onResultOpen(result)}>
-                      Open Result
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+    <div className="search-overlay-backdrop" onClick={onClose}>
+      <div
+        className="search-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search Notebook"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="search-overlay__header">
+          <input
+            ref={inputRef}
+            className="search-overlay__input"
+            aria-label="Search Notebook"
+            placeholder="Search Canvas Items, Tags, Page titles…"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onQueryChange("");
+                onClose();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="search-overlay__close"
+            aria-label="Close Search"
+            onClick={onClose}
+          >
+            ×
+          </button>
         </div>
-      ) : null}
-    </section>
+        <div className="search-overlay__body" aria-label="Search Results">
+          {query.trim().length === 0 ? (
+            <p className="search-overlay__hint">
+              Type to search Canvas Items, Tags, and Page titles.
+            </p>
+          ) : groupedResults.length === 0 ? (
+            <p className="search-overlay__empty">
+              No Search Results found in this Notebook.
+            </p>
+          ) : (
+            groupedResults.map((group) => (
+              <div key={group.pageId} className="search-overlay__page-group">
+                <p className="search-overlay__page-header">
+                  <span className="search-overlay__section-name">
+                    {group.sectionTitle}
+                  </span>
+                  {" › "}
+                  <span className="search-overlay__page-name">
+                    {group.pageTitle}
+                  </span>
+                </p>
+                {group.results.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    className="search-overlay__result"
+                    aria-label="Open Result"
+                    onClick={() => handleResultOpen(result)}
+                  >
+                    <span className="search-overlay__result-label">
+                      {result.sourceLabel}
+                    </span>
+                    {result.matchedTags.length > 0 ? (
+                      <span className="search-overlay__result-tags">
+                        {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                      </span>
+                    ) : null}
+                    <span className="search-overlay__result-snippet">
+                      {result.snippet}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -2395,7 +2167,8 @@ interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
-  readonly showEmptyCanvasPrompts: boolean;
+  readonly theme: EffectiveTheme;
+  readonly onEditorReady?: (editor: TldrawEditor | null) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTldrawCanvasSnapshot
@@ -2406,7 +2179,8 @@ const PageTextCanvas = ({
   page,
   notebook,
   highlightedCanvasItemId,
-  showEmptyCanvasPrompts,
+  theme,
+  onEditorReady,
   onPageTextCanvasChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
@@ -2441,6 +2215,10 @@ const PageTextCanvas = ({
     [highlightedCanvasItemId, initialRegions]
   );
 
+  useEffect(() => {
+    editorRef.current?.user?.updateUserPreferences({ colorScheme: theme });
+  }, [theme]);
+
   const handleMount = useCallback(
     (editor: TldrawEditor) => {
       const drafts = toTldrawTextShapeDrafts(initialTextItems, initialRegions);
@@ -2448,6 +2226,8 @@ const PageTextCanvas = ({
         initialFreehandDrawingItems
       );
       editorRef.current = editor;
+      editor.user?.updateUserPreferences({ colorScheme: theme });
+      onEditorReady?.(editor);
 
       if (drafts.length > 0 || drawingDrafts.length > 0) {
         editor.createShapes([...drafts, ...drawingDrafts]);
@@ -2495,6 +2275,7 @@ const PageTextCanvas = ({
       return () => {
         window.clearTimeout(saveTimeoutRef.current);
         editorRef.current = null;
+        onEditorReady?.(null);
         unsubscribe();
       };
     },
@@ -2502,115 +2283,122 @@ const PageTextCanvas = ({
       initialFreehandDrawingItems,
       initialRegions,
       initialTextItems,
+      onEditorReady,
       onPageTextCanvasChange,
-      page.id
+      page.id,
+      theme
     ]
   );
 
   return (
-    <>
-      <div className="canvas-tool-switcher" aria-label="Canvas tool shortcuts">
-        <button type="button" onClick={() => editorRef.current?.setCurrentTool("text")}>
-          Use Text Tool
-        </button>
-        <button type="button" onClick={() => editorRef.current?.setCurrentTool("draw")}>
-          Use Draw Tool
-        </button>
-        <span>
-          Freehand Drawing stays local and is not OCR or searchable handwriting.
-        </span>
-      </div>
-      <div
-        className="tldraw-canvas"
-        data-testid="tldraw-page-canvas"
-        aria-label={`${page.title} tldraw text canvas`}
-      >
-        {showEmptyCanvasPrompts ? (
-          <EmptyCanvasPrompts
-            onUseTextTool={() => editorRef.current?.setCurrentTool("text")}
-            onUseDrawTool={() => editorRef.current?.setCurrentTool("draw")}
-          />
-        ) : null}
-        {highlightedRegion !== null ? (
-          <div
-            className="canvas-region-highlight"
-            role="status"
-            aria-label="Highlighted Canvas Region"
-            style={{
-              height: `${highlightedRegion.bounds.height}px`,
-              left: `${highlightedRegion.bounds.x}px`,
-              top: `${highlightedRegion.bounds.y}px`,
-              width: `${highlightedRegion.bounds.width}px`
-            }}
-          />
-        ) : null}
-        <Tldraw
-          assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
-          autoFocus
-          initialState="text"
-          onMount={handleMount}
+    <div
+      className="tldraw-canvas"
+      data-testid="tldraw-page-canvas"
+      aria-label={`${page.title} tldraw text canvas`}
+    >
+      {highlightedRegion !== null ? (
+        <div
+          className="canvas-region-highlight"
+          role="status"
+          aria-label="Highlighted Canvas Region"
+          style={{
+            height: `${highlightedRegion.bounds.height}px`,
+            left: `${highlightedRegion.bounds.x}px`,
+            top: `${highlightedRegion.bounds.y}px`,
+            width: `${highlightedRegion.bounds.width}px`
+          }}
         />
-      </div>
-    </>
+      ) : null}
+      <Tldraw
+        assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
+        autoFocus
+        initialState="text"
+        onMount={handleMount}
+      />
+    </div>
   );
 };
 
-interface EmptyCanvasPromptsProps {
-  readonly onUseTextTool: () => void;
-  readonly onUseDrawTool: () => void;
+interface TextCanvasItemTagsProps {
+  readonly pageTextItems: readonly TextCanvasItem[];
+  readonly onTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
 }
 
-const EmptyCanvasPrompts = ({
-  onUseTextTool,
-  onUseDrawTool
-}: EmptyCanvasPromptsProps) => (
-  <div className="empty-canvas-prompts" aria-label="Empty Canvas Prompts">
-    <p className="eyebrow">Empty Canvas Prompts</p>
-    <h3>Start rough interview-prep work here</h3>
-    <p>
-      Capture first, organize later. These prompts disappear after the first Canvas
-      Item lands on this Page.
-    </p>
-    <div>
-      <button type="button" onClick={onUseTextTool}>
-        Start typing
-      </button>
-      <button type="button" onClick={onUseDrawTool}>
-        Sketch rough work
-      </button>
-      <button
-        type="button"
-        onClick={() => document.getElementById("link-card-url")?.focus()}
-      >
-        Paste screenshot or link
-      </button>
-      <button
-        type="button"
-        onClick={() => document.getElementById("notebook-search")?.focus()}
-      >
-        Ask/Search Notebook
-      </button>
+const TextCanvasItemTags = ({
+  pageTextItems,
+  onTagsChange
+}: TextCanvasItemTagsProps) => {
+  const [tagDrafts, setTagDrafts] = useState<Partial<Record<CanvasItemId, string>>>(
+    {}
+  );
+
+  if (pageTextItems.length === 0) {
+    return null;
+  }
+
+  const handleTagDraftChange = (canvasItemId: CanvasItemId, tagDraft: string) => {
+    setTagDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [canvasItemId]: tagDraft
+    }));
+    onTagsChange(canvasItemId, tagDraft);
+  };
+
+  return (
+    <div className="text-item-tags" aria-label="Text Canvas Item Tags">
+      <h4>Optional Tags</h4>
+      <p>
+        Add comma-separated Tags to text Rough Work without changing the canvas.
+      </p>
+      {pageTextItems.map((textItem) => (
+        <label key={textItem.id} htmlFor={`${textItem.id}-tags`}>
+          Tags for {textItem.text}
+          <input
+            id={`${textItem.id}-tags`}
+            value={tagDrafts[textItem.id] ?? textItem.tags.join(", ")}
+            placeholder="e.g. graphs, bfs"
+            onChange={(event) =>
+              handleTagDraftChange(textItem.id, event.target.value)
+            }
+          />
+        </label>
+      ))}
     </div>
-  </div>
-);
+  );
+};
 
 interface PageLinkCardsProps {
   readonly page: Page;
+  readonly notebook: Notebook;
   readonly onLinkCardAdd: (
     pageId: PageId,
     url: string,
     note: string,
     tagDraft: string
   ) => void;
+  readonly onLinkCardTagsChange: (
+    canvasItemId: CanvasItemId,
+    tagDraft: string
+  ) => void;
 }
 
 const PageLinkCards = ({
   page,
-  onLinkCardAdd
+  notebook,
+  onLinkCardAdd,
+  onLinkCardTagsChange
 }: PageLinkCardsProps) => {
   const [url, setUrl] = useState("");
   const [note, setNote] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const pageLinkCards = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is LinkCardCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "link-card"
+      ),
+    [notebook.canvasItems, page.id]
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2661,12 +2449,37 @@ const PageLinkCards = ({
         </label>
         <button type="submit">Add Link Card</button>
       </form>
+      {pageLinkCards.length > 0 ? (
+        <ul className="link-card-list" aria-label="Link Cards on this Page">
+          {pageLinkCards.map((linkCard) => (
+            <li key={linkCard.id}>
+              <a href={linkCard.url} rel="noreferrer" target="_blank">
+                {linkCard.url}
+              </a>
+              {linkCard.note.length > 0 ? <p>{linkCard.note}</p> : null}
+              <label htmlFor={`${linkCard.id}-tags`}>
+                Tags for {linkCard.url}
+                <input
+                  id={`${linkCard.id}-tags`}
+                  defaultValue={linkCard.tags.join(", ")}
+                  placeholder="e.g. graphs, research"
+                  onChange={(event) =>
+                    onLinkCardTagsChange(linkCard.id, event.target.value)
+                  }
+                />
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 };
 
 interface PageImageItemsProps {
   readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onImageItemAdd: (
     pageId: PageId,
     dataUrl: string,
@@ -2674,11 +2487,19 @@ interface PageImageItemsProps {
     caption: string,
     tagDraft: string
   ) => void;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
 }
 
 const PageImageItems = ({
   page,
-  onImageItemAdd
+  notebook,
+  highlightedCanvasItemId,
+  onImageItemAdd,
+  onImageItemMetadataChange
 }: PageImageItemsProps) => {
   const [imageDraft, setImageDraft] = useState<{
     readonly dataUrl: string;
@@ -2687,6 +2508,14 @@ const PageImageItems = ({
   } | null>(null);
   const [caption, setCaption] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const pageImageItems = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is ImageCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "image"
+      ),
+    [notebook.canvasItems, page.id]
+  );
 
   const readImageFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -2716,21 +2545,6 @@ const PageImageItems = ({
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const imageFile = Array.from(event.clipboardData.files).find((file) =>
-      file.type.startsWith("image/")
-    );
-
-    if (imageFile !== undefined) {
-      event.preventDefault();
-      readImageFile(imageFile);
-    }
-  };
-
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-  };
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    const imageFile = Array.from(event.dataTransfer.files).find((file) =>
       file.type.startsWith("image/")
     );
 
@@ -2771,8 +2585,6 @@ const PageImageItems = ({
       <form className="image-item-form" onSubmit={handleSubmit}>
         <div
           className="image-paste-target"
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
           onPaste={handlePaste}
           tabIndex={0}
           role="button"
@@ -2816,14 +2628,95 @@ const PageImageItems = ({
           Add Image Item
         </button>
       </form>
+      {pageImageItems.length > 0 ? (
+        <ul className="image-item-list" aria-label="Image Items on this Page">
+          {pageImageItems.map((imageItem) => (
+            <EditableImageItem
+              imageItem={imageItem}
+              isHighlighted={highlightedCanvasItemId === imageItem.id}
+              key={imageItem.id}
+              onImageItemMetadataChange={onImageItemMetadataChange}
+            />
+          ))}
+        </ul>
+      ) : null}
     </section>
+  );
+};
+
+interface EditableImageItemProps {
+  readonly imageItem: ImageCanvasItem;
+  readonly isHighlighted: boolean;
+  readonly onImageItemMetadataChange: (
+    canvasItemId: CanvasItemId,
+    caption: string,
+    tagDraft: string
+  ) => void;
+}
+
+const EditableImageItem = ({
+  imageItem,
+  isHighlighted,
+  onImageItemMetadataChange
+}: EditableImageItemProps) => {
+  const [captionDraft, setCaptionDraft] = useState(imageItem.caption);
+  const [tagDraft, setTagDraft] = useState(imageItem.tags.join(", "));
+
+  const handleCaptionChange = (nextCaption: string) => {
+    setCaptionDraft(nextCaption);
+    onImageItemMetadataChange(imageItem.id, nextCaption, tagDraft);
+  };
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+    onImageItemMetadataChange(imageItem.id, captionDraft, nextTagDraft);
+  };
+
+  return (
+    <li className={isHighlighted ? "image-item-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Image Item Canvas Region">
+          Highlighted Image Item
+        </span>
+      ) : null}
+      <img
+        alt={imageItem.caption || "Image Item"}
+        src={imageItem.dataUrl}
+      />
+      <label htmlFor={`${imageItem.id}-caption`}>
+        Edit Image Item caption
+        <input
+          id={`${imageItem.id}-caption`}
+          value={captionDraft}
+          placeholder="Optional caption"
+          onChange={(event) => handleCaptionChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${imageItem.id}-tags`}>
+        Tags for this Image Item
+        <input
+          id={`${imageItem.id}-tags`}
+          value={tagDraft}
+          placeholder="e.g. diagrams, heap"
+          onChange={(event) => handleTagsChange(event.target.value)}
+        />
+      </label>
+    </li>
   );
 };
 
 interface PageDiagramItemsProps {
   readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onDiagramItemAdd: (
     pageId: PageId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
     kind: DiagramItemKind,
     label: string,
     tagDraft: string
@@ -2839,11 +2732,22 @@ const DIAGRAM_ITEM_KINDS: readonly DiagramItemKind[] = [
 
 const PageDiagramItems = ({
   page,
-  onDiagramItemAdd
+  notebook,
+  highlightedCanvasItemId,
+  onDiagramItemAdd,
+  onDiagramItemChange
 }: PageDiagramItemsProps) => {
   const [kind, setKind] = useState<DiagramItemKind>("box");
   const [label, setLabel] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const pageDiagramItems = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is DiagramCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "diagram"
+      ),
+    [notebook.canvasItems, page.id]
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2900,14 +2804,121 @@ const PageDiagramItems = ({
           Add Diagram Item
         </button>
       </form>
+      {pageDiagramItems.length > 0 ? (
+        <ul className="diagram-item-list" aria-label="Diagram Items on this Page">
+          {pageDiagramItems.map((diagramItem) => (
+            <EditableDiagramItem
+              diagramItem={diagramItem}
+              isHighlighted={highlightedCanvasItemId === diagramItem.id}
+              key={diagramItem.id}
+              onDiagramItemChange={onDiagramItemChange}
+            />
+          ))}
+        </ul>
+      ) : null}
     </section>
+  );
+};
+
+interface EditableDiagramItemProps {
+  readonly diagramItem: DiagramCanvasItem;
+  readonly isHighlighted: boolean;
+  readonly onDiagramItemChange: (
+    canvasItemId: CanvasItemId,
+    kind: DiagramItemKind,
+    label: string,
+    tagDraft: string
+  ) => void;
+}
+
+const EditableDiagramItem = ({
+  diagramItem,
+  isHighlighted,
+  onDiagramItemChange
+}: EditableDiagramItemProps) => {
+  const [kindDraft, setKindDraft] = useState<DiagramItemKind>(diagramItem.kind);
+  const [labelDraft, setLabelDraft] = useState(diagramItem.label);
+  const [tagDraft, setTagDraft] = useState(diagramItem.tags.join(", "));
+
+  const handleKindChange = (nextKind: DiagramItemKind) => {
+    setKindDraft(nextKind);
+
+    if (labelDraft.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, nextKind, labelDraft, tagDraft);
+    }
+  };
+
+  const handleLabelChange = (nextLabel: string) => {
+    setLabelDraft(nextLabel);
+
+    if (nextLabel.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, kindDraft, nextLabel, tagDraft);
+    }
+  };
+
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
+
+    if (labelDraft.trim().length > 0) {
+      onDiagramItemChange(diagramItem.id, kindDraft, labelDraft, nextTagDraft);
+    }
+  };
+
+  return (
+    <li className={isHighlighted ? "diagram-item-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Diagram Item Canvas Region">
+          Highlighted Diagram Item
+        </span>
+      ) : null}
+      <strong>{diagramKindLabel(kindDraft)}</strong>
+      <label htmlFor={`${diagramItem.id}-kind`}>
+        Diagram Item kind
+        <select
+          id={`${diagramItem.id}-kind`}
+          value={kindDraft}
+          onChange={(event) => handleKindChange(event.target.value as DiagramItemKind)}
+        >
+          {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
+            <option key={diagramKind} value={diagramKind}>
+              {diagramKindLabel(diagramKind)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label htmlFor={`${diagramItem.id}-label`}>
+        Edit Diagram Item label
+        <input
+          id={`${diagramItem.id}-label`}
+          value={labelDraft}
+          placeholder="Diagram label"
+          onChange={(event) => handleLabelChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${diagramItem.id}-tags`}>
+        Tags for this Diagram Item
+        <input
+          id={`${diagramItem.id}-tags`}
+          value={tagDraft}
+          placeholder="e.g. queues, availability"
+          onChange={(event) => handleTagsChange(event.target.value)}
+        />
+      </label>
+    </li>
   );
 };
 
 interface PageCodeBlocksProps {
   readonly page: Page;
+  readonly notebook: Notebook;
+  readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly onCodeBlockAdd: (
     pageId: PageId,
+    code: string,
+    tagDraft: string
+  ) => void;
+  readonly onCodeBlockChange: (
+    canvasItemId: CanvasItemId,
     code: string,
     tagDraft: string
   ) => void;
@@ -2915,10 +2926,21 @@ interface PageCodeBlocksProps {
 
 const PageCodeBlocks = ({
   page,
-  onCodeBlockAdd
+  notebook,
+  highlightedCanvasItemId,
+  onCodeBlockAdd,
+  onCodeBlockChange
 }: PageCodeBlocksProps) => {
   const [code, setCode] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const pageCodeBlocks = useMemo(
+    () =>
+      notebook.canvasItems.filter(
+        (canvasItem): canvasItem is CodeBlockCanvasItem =>
+          canvasItem.pageId === page.id && canvasItem.type === "code-block"
+      ),
+    [notebook.canvasItems, page.id]
+  );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2961,614 +2983,593 @@ const PageCodeBlocks = ({
           Add Code Block
         </button>
       </form>
+      {pageCodeBlocks.length > 0 ? (
+        <ul className="code-block-list" aria-label="Code Blocks on this Page">
+          {pageCodeBlocks.map((codeBlock) => (
+            <EditableCodeBlock
+              codeBlock={codeBlock}
+              isHighlighted={highlightedCanvasItemId === codeBlock.id}
+              key={codeBlock.id}
+              onCodeBlockChange={onCodeBlockChange}
+            />
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 };
 
-interface CanvasItemCardsProps {
-  readonly canvasItems: readonly InspectableCanvasItem[];
-  readonly highlightedCanvasItemId: CanvasItemId | null;
-  readonly onInspect: (canvasItemId: CanvasItemId) => void;
-}
-
-const CanvasItemCards = ({
-  canvasItems,
-  highlightedCanvasItemId,
-  onInspect
-}: CanvasItemCardsProps) => {
-  if (canvasItems.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="canvas-item-cards" aria-labelledby="canvas-items-title">
-      <div>
-        <p className="eyebrow">Canvas Items</p>
-        <h4 id="canvas-items-title">Hover Metadata</h4>
-        <p>
-          Hover or focus a Canvas Item for lightweight metadata. Open the Item
-          Inspector when you want to edit captions, notes, labels, code, or Tags.
-        </p>
-      </div>
-      <ul aria-label="Canvas Items on this Page">
-        {canvasItems.map((canvasItem) => (
-          <li
-            className={
-              highlightedCanvasItemId === canvasItem.id
-                ? "canvas-item-card canvas-item-card--highlighted"
-                : "canvas-item-card"
-            }
-            key={canvasItem.id}
-            tabIndex={0}
-          >
-            {highlightedCanvasItemId === canvasItem.id ? (
-              <span
-                className="canvas-item-card__highlight"
-                role="status"
-                aria-label={highlightLabelForCanvasItem(canvasItem)}
-              >
-                Highlighted {labelForCanvasItem(canvasItem)}
-              </span>
-            ) : null}
-            <CanvasItemPreview canvasItem={canvasItem} />
-            <div className="hover-metadata" aria-label="Hover Metadata">
-              <strong>{labelForCanvasItem(canvasItem)}</strong>
-              <span>{summaryForCanvasItem(canvasItem)}</span>
-              {tagsForCanvasItem(canvasItem).length > 0 ? (
-                <span>
-                  Tags: {tagsForCanvasItem(canvasItem).map((tag) => `#${tag}`).join(", ")}
-                </span>
-              ) : (
-                <span>No Tags yet</span>
-              )}
-            </div>
-            <button type="button" onClick={() => onInspect(canvasItem.id)}>
-              Open Item Inspector
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-};
-
-interface CanvasItemPreviewProps {
-  readonly canvasItem: InspectableCanvasItem;
-}
-
-const CanvasItemPreview = ({ canvasItem }: CanvasItemPreviewProps) => {
-  if (canvasItem.type === "link-card") {
-    return (
-      <a href={canvasItem.url} rel="noreferrer" target="_blank">
-        {canvasItem.url}
-      </a>
-    );
-  }
-
-  if (canvasItem.type === "image") {
-    return (
-      <img
-        alt={canvasItem.caption || "Image Item"}
-        src={canvasItem.dataUrl}
-      />
-    );
-  }
-
-  if (canvasItem.type === "diagram") {
-    return (
-      <div className="diagram-preview">
-        <strong>{diagramKindLabel(canvasItem.kind)}</strong>
-        <span>{canvasItem.label}</span>
-      </div>
-    );
-  }
-
-  if (canvasItem.type === "code-block") {
-    return <pre>{canvasItem.code}</pre>;
-  }
-
-  return <p>{canvasItem.text}</p>;
-};
-
-interface ItemInspectorProps {
-  readonly canvasItem: InspectableCanvasItem;
-  readonly onClose: () => void;
+interface EditableCodeBlockProps {
+  readonly codeBlock: CodeBlockCanvasItem;
+  readonly isHighlighted: boolean;
   readonly onCodeBlockChange: (
     canvasItemId: CanvasItemId,
     code: string,
     tagDraft: string
   ) => void;
-  readonly onDiagramItemChange: (
-    canvasItemId: CanvasItemId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onImageItemMetadataChange: (
-    canvasItemId: CanvasItemId,
-    caption: string,
-    tagDraft: string
-  ) => void;
-  readonly onLinkCardMetadataChange: (
-    canvasItemId: CanvasItemId,
-    note: string,
-    tagDraft: string
-  ) => void;
-  readonly onTextCanvasItemTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
 }
 
-const ItemInspector = ({
-  canvasItem,
-  onClose,
-  onCodeBlockChange,
-  onDiagramItemChange,
-  onImageItemMetadataChange,
-  onLinkCardMetadataChange,
-  onTextCanvasItemTagsChange
-}: ItemInspectorProps) => {
-  const [codeDraft, setCodeDraft] = useState(
-    canvasItem.type === "code-block" ? canvasItem.code : ""
-  );
-  const [captionDraft, setCaptionDraft] = useState(
-    canvasItem.type === "image" ? canvasItem.caption : ""
-  );
-  const [noteDraft, setNoteDraft] = useState(
-    canvasItem.type === "link-card" ? canvasItem.note : ""
-  );
-  const [kindDraft, setKindDraft] = useState<DiagramItemKind>(
-    canvasItem.type === "diagram" ? canvasItem.kind : "box"
-  );
-  const [labelDraft, setLabelDraft] = useState(
-    canvasItem.type === "diagram" ? canvasItem.label : ""
-  );
-  const [tagDraft, setTagDraft] = useState(tagsForCanvasItem(canvasItem).join(", "));
-
-  const handleTagsChange = (nextTagDraft: string) => {
-    setTagDraft(nextTagDraft);
-
-    if (canvasItem.type === "text") {
-      onTextCanvasItemTagsChange(canvasItem.id, nextTagDraft);
-      return;
-    }
-
-    if (canvasItem.type === "link-card") {
-      onLinkCardMetadataChange(canvasItem.id, noteDraft, nextTagDraft);
-      return;
-    }
-
-    if (canvasItem.type === "image") {
-      onImageItemMetadataChange(canvasItem.id, captionDraft, nextTagDraft);
-      return;
-    }
-
-    if (canvasItem.type === "diagram" && labelDraft.trim().length > 0) {
-      onDiagramItemChange(canvasItem.id, kindDraft, labelDraft, nextTagDraft);
-      return;
-    }
-
-    if (canvasItem.type === "code-block" && codeDraft.trim().length > 0) {
-      onCodeBlockChange(canvasItem.id, codeDraft, nextTagDraft);
-    }
-  };
+const EditableCodeBlock = ({
+  codeBlock,
+  isHighlighted,
+  onCodeBlockChange
+}: EditableCodeBlockProps) => {
+  const [codeDraft, setCodeDraft] = useState(codeBlock.code);
+  const [tagDraft, setTagDraft] = useState(codeBlock.tags.join(", "));
 
   const handleCodeChange = (nextCode: string) => {
     setCodeDraft(nextCode);
 
     if (nextCode.trim().length > 0) {
-      onCodeBlockChange(canvasItem.id, nextCode, tagDraft);
+      onCodeBlockChange(codeBlock.id, nextCode, tagDraft);
     }
   };
 
-  const handleCaptionChange = (nextCaption: string) => {
-    setCaptionDraft(nextCaption);
-    onImageItemMetadataChange(canvasItem.id, nextCaption, tagDraft);
-  };
+  const handleTagsChange = (nextTagDraft: string) => {
+    setTagDraft(nextTagDraft);
 
-  const handleNoteChange = (nextNote: string) => {
-    setNoteDraft(nextNote);
-    onLinkCardMetadataChange(canvasItem.id, nextNote, tagDraft);
-  };
-
-  const handleDiagramKindChange = (nextKind: DiagramItemKind) => {
-    setKindDraft(nextKind);
-
-    if (labelDraft.trim().length > 0) {
-      onDiagramItemChange(canvasItem.id, nextKind, labelDraft, tagDraft);
-    }
-  };
-
-  const handleDiagramLabelChange = (nextLabel: string) => {
-    setLabelDraft(nextLabel);
-
-    if (nextLabel.trim().length > 0) {
-      onDiagramItemChange(canvasItem.id, kindDraft, nextLabel, tagDraft);
+    if (codeDraft.trim().length > 0) {
+      onCodeBlockChange(codeBlock.id, codeDraft, nextTagDraft);
     }
   };
 
   return (
-    <aside
-      className="item-inspector"
-      aria-label="Item Inspector"
-      aria-labelledby="item-inspector-title"
-    >
-      <div className="item-inspector__header">
-        <div>
-          <p className="eyebrow">Item Inspector</p>
-          <h4 id="item-inspector-title">{labelForCanvasItem(canvasItem)}</h4>
-        </div>
-        <button type="button" onClick={onClose}>
-          Close Inspector
-        </button>
-      </div>
-      {canvasItem.type === "link-card" ? (
-        <label htmlFor={`${canvasItem.id}-inspector-note`}>
-          Inspector link notes
-          <textarea
-            id={`${canvasItem.id}-inspector-note`}
-            value={noteDraft}
-            placeholder="Why this URL matters for this Page"
-            onChange={(event) => handleNoteChange(event.target.value)}
-          />
-        </label>
+    <li className={isHighlighted ? "code-block-list__item--highlighted" : undefined}>
+      {isHighlighted ? (
+        <span role="status" aria-label="Highlighted Code Block Canvas Region">
+          Highlighted Code Block
+        </span>
       ) : null}
-      {canvasItem.type === "image" ? (
-        <label htmlFor={`${canvasItem.id}-inspector-caption`}>
-          Inspector Image Item caption
-          <input
-            id={`${canvasItem.id}-inspector-caption`}
-            value={captionDraft}
-            placeholder="Optional caption"
-            onChange={(event) => handleCaptionChange(event.target.value)}
-          />
-        </label>
-      ) : null}
-      {canvasItem.type === "diagram" ? (
-        <>
-          <label htmlFor={`${canvasItem.id}-inspector-kind`}>
-            Inspector Diagram Item kind
-            <select
-              id={`${canvasItem.id}-inspector-kind`}
-              value={kindDraft}
-              onChange={(event) =>
-                handleDiagramKindChange(event.target.value as DiagramItemKind)
-              }
-            >
-              {DIAGRAM_ITEM_KINDS.map((diagramKind) => (
-                <option key={diagramKind} value={diagramKind}>
-                  {diagramKindLabel(diagramKind)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label htmlFor={`${canvasItem.id}-inspector-label`}>
-            Inspector Diagram Item label
-            <input
-              id={`${canvasItem.id}-inspector-label`}
-              value={labelDraft}
-              placeholder="Diagram label"
-              onChange={(event) => handleDiagramLabelChange(event.target.value)}
-            />
-          </label>
-        </>
-      ) : null}
-      {canvasItem.type === "code-block" ? (
-        <label htmlFor={`${canvasItem.id}-inspector-code`}>
-          Inspector Code Block content
-          <textarea
-            id={`${canvasItem.id}-inspector-code`}
-            spellCheck={false}
-            value={codeDraft}
-            onChange={(event) => handleCodeChange(event.target.value)}
-          />
-        </label>
-      ) : null}
-      <label htmlFor={`${canvasItem.id}-inspector-tags`}>
-        Inspector Tags
+      <label htmlFor={`${codeBlock.id}-code`}>
+        Edit Code Block
+        <textarea
+          id={`${codeBlock.id}-code`}
+          spellCheck={false}
+          value={codeDraft}
+          onChange={(event) => handleCodeChange(event.target.value)}
+        />
+      </label>
+      <label htmlFor={`${codeBlock.id}-tags`}>
+        Tags for this Code Block
         <input
-          id={`${canvasItem.id}-inspector-tags`}
+          id={`${codeBlock.id}-tags`}
           value={tagDraft}
-          placeholder="e.g. graphs, bfs"
+          placeholder="e.g. arrays, pseudocode"
           onChange={(event) => handleTagsChange(event.target.value)}
         />
       </label>
-    </aside>
+    </li>
   );
 };
 
-const labelForCanvasItem = (canvasItem: InspectableCanvasItem): string => {
-  if (canvasItem.type === "link-card") {
-    return "Link Card";
-  }
-
-  if (canvasItem.type === "image") {
-    return "Image Item";
-  }
-
-  if (canvasItem.type === "diagram") {
-    return "Diagram Item";
-  }
-
-  if (canvasItem.type === "code-block") {
-    return "Code Block";
-  }
-
-  return "Text Canvas Item";
-};
-
-const highlightLabelForCanvasItem = (canvasItem: InspectableCanvasItem): string =>
-  canvasItem.type === "text"
-    ? "Highlighted Text Canvas Item"
-    : `Highlighted ${labelForCanvasItem(canvasItem)} Canvas Region`;
-
-const tagsForCanvasItem = (
-  canvasItem: InspectableCanvasItem
-): readonly string[] => canvasItem.tags;
-
-const summaryForCanvasItem = (canvasItem: InspectableCanvasItem): string => {
-  if (canvasItem.type === "link-card") {
-    return canvasItem.note || canvasItem.url;
-  }
-
-  if (canvasItem.type === "image") {
-    return canvasItem.caption || "Local image or screenshot";
-  }
-
-  if (canvasItem.type === "diagram") {
-    return `${diagramKindLabel(canvasItem.kind)}: ${canvasItem.label}`;
-  }
-
-  if (canvasItem.type === "code-block") {
-    return canvasItem.code;
-  }
-
-  return canvasItem.text;
-};
-
-interface SearchResultGroup {
-  readonly pageId: PageId;
-  readonly notebookPath: string;
+interface LocalSearchProps {
+  readonly query: string;
   readonly results: readonly SearchResult[];
+  readonly onQueryChange: (query: string) => void;
+  readonly onResultOpen: (result: SearchResult) => void;
 }
 
-const groupSearchResultsByPage = (
-  results: readonly SearchResult[]
-): readonly SearchResultGroup[] => {
-  const groups = new Map<PageId, SearchResultGroup>();
+interface ItemInspectorContentProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly pageTextItems: readonly TextCanvasItem[];
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onLinkCardAdd: (pageId: PageId, url: string, note: string, tagDraft: string) => void;
+  readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onImageItemAdd: (pageId: PageId, dataUrl: string, mediaType: string, caption: string, tagDraft: string) => void;
+  readonly onImageItemMetadataChange: (canvasItemId: CanvasItemId, caption: string, tagDraft: string) => void;
+  readonly onDiagramItemAdd: (pageId: PageId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onDiagramItemChange: (canvasItemId: CanvasItemId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onCodeBlockAdd: (pageId: PageId, code: string, tagDraft: string) => void;
+  readonly onCodeBlockChange: (canvasItemId: CanvasItemId, code: string, tagDraft: string) => void;
+}
 
-  for (const result of results) {
-    const existingGroup = groups.get(result.pageId);
+const ItemInspectorContent = ({
+  page,
+  notebook,
+  pageTextItems,
+  highlightedCanvasItemId,
+  onTextCanvasItemTagsChange,
+  onLinkCardAdd,
+  onLinkCardTagsChange,
+  onImageItemAdd,
+  onImageItemMetadataChange,
+  onDiagramItemAdd,
+  onDiagramItemChange,
+  onCodeBlockAdd,
+  onCodeBlockChange
+}: ItemInspectorContentProps) => (
+  <div className="item-inspector">
+    <TextCanvasItemTags
+      pageTextItems={pageTextItems}
+      onTagsChange={onTextCanvasItemTagsChange}
+    />
+    <PageLinkCards
+      page={page}
+      notebook={notebook}
+      onLinkCardAdd={onLinkCardAdd}
+      onLinkCardTagsChange={onLinkCardTagsChange}
+    />
+    <PageImageItems
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onImageItemAdd={onImageItemAdd}
+      onImageItemMetadataChange={onImageItemMetadataChange}
+    />
+    <PageDiagramItems
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onDiagramItemAdd={onDiagramItemAdd}
+      onDiagramItemChange={onDiagramItemChange}
+    />
+    <PageCodeBlocks
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onCodeBlockAdd={onCodeBlockAdd}
+      onCodeBlockChange={onCodeBlockChange}
+    />
+  </div>
+);
 
-    if (existingGroup === undefined) {
-      groups.set(result.pageId, {
-        pageId: result.pageId,
-        notebookPath: result.notebookPath,
-        results: [result]
-      });
-      continue;
+
+
+const LocalSearch = ({
+  query,
+  results,
+  onQueryChange,
+  onResultOpen
+}: LocalSearchProps) => (
+  <section className="section-card" aria-labelledby="local-search-title">
+    <div className="section-card__header">
+      <div>
+        <p className="eyebrow">Local Index</p>
+        <h2 id="local-search-title">Search Rough Work</h2>
+      </div>
+      <p className="section-count" aria-live="polite">
+        {results.length} {results.length === 1 ? "Search Result" : "Search Results"}
+      </p>
+    </div>
+    <label className="search-field" htmlFor="notebook-search">
+      Search Canvas Items, Tags, Page titles, and Section paths
+      <input
+        id="notebook-search"
+        value={query}
+        placeholder="e.g. binary search invariant"
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+    </label>
+    {query.trim().length > 0 && results.length === 0 ? (
+      <p className="empty-state">No Search Results found in this Notebook.</p>
+    ) : null}
+    {results.length > 0 ? (
+      <ul className="search-results" aria-label="Search Results">
+        {results.map((result) => (
+          <li className="search-result" key={result.id}>
+            <div>
+              <strong>{result.notebookPath}</strong>
+              <span>{result.sourceLabel}</span>
+              {result.matchedTags.length > 0 ? (
+                <span>
+                  Matched Tags: {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                </span>
+              ) : null}
+              <p>{result.snippet}</p>
+            </div>
+            <button type="button" onClick={() => onResultOpen(result)}>
+              Open Result
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null}
+  </section>
+);
+
+interface CommandAction {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly keywords: string;
+  readonly run: () => void;
+}
+
+type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspector";
+
+interface CommandPaletteProps {
+  readonly actions: readonly CommandAction[];
+  readonly activeIndex: number;
+  readonly isOpen: boolean;
+  readonly query: string;
+  readonly onActiveIndexChange: (index: number) => void;
+  readonly onClose: () => void;
+  readonly onQueryChange: (query: string) => void;
+}
+
+const CommandPalette = ({
+  actions,
+  activeIndex,
+  isOpen,
+  query,
+  onActiveIndexChange,
+  onClose,
+  onQueryChange
+}: CommandPaletteProps) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const filteredActions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (normalizedQuery.length === 0) {
+      return actions;
     }
 
-    groups.set(result.pageId, {
-      ...existingGroup,
-      results: [...existingGroup.results, result]
-    });
+    return actions.filter((action) =>
+      [action.label, action.description, action.keywords]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    );
+  }, [actions, query]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    inputRef.current?.focus();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (filteredActions.length === 0) {
+      onActiveIndexChange(0);
+      return;
+    }
+
+    if (activeIndex >= filteredActions.length) {
+      onActiveIndexChange(0);
+    }
+  }, [activeIndex, filteredActions, onActiveIndexChange]);
+
+  if (!isOpen) {
+    return null;
   }
 
-  return Array.from(groups.values());
+  const runAction = (action: CommandAction) => {
+    action.run();
+    onClose();
+    onQueryChange("");
+    onActiveIndexChange(0);
+  };
+
+  return (
+    <div className="command-palette-overlay" onClick={onClose}>
+      <div
+        className="command-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command Palette"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          className="command-palette__input"
+          aria-label="Command Palette"
+          placeholder="Type a command"
+          value={query}
+          onChange={(event) => {
+            onQueryChange(event.target.value);
+            onActiveIndexChange(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              onActiveIndexChange(
+                filteredActions.length === 0 ? 0 : (activeIndex + 1) % filteredActions.length
+              );
+              return;
+            }
+
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              onActiveIndexChange(
+                filteredActions.length === 0
+                  ? 0
+                  : (activeIndex - 1 + filteredActions.length) % filteredActions.length
+              );
+              return;
+            }
+
+            if (event.key === "Enter") {
+              event.preventDefault();
+              const action = filteredActions[activeIndex] ?? filteredActions[0];
+
+              if (action !== undefined) {
+                runAction(action);
+              }
+              return;
+            }
+
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+        />
+        <div className="command-palette__list" role="listbox" aria-label="Command results">
+          {filteredActions.length === 0 ? (
+            <div className="command-palette__empty">No matching actions.</div>
+          ) : (
+            filteredActions.map((action, index) => (
+              <button
+                key={action.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                className={
+                  index === activeIndex
+                    ? "command-palette__item command-palette__item--active"
+                    : "command-palette__item"
+                }
+                onMouseEnter={() => onActiveIndexChange(index)}
+                onClick={() => runAction(action)}
+              >
+                <span>{action.label}</span>
+                <small>{action.description}</small>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
+
+interface CanvasModalProps {
+  readonly children: ReactNode;
+  readonly isOpen: boolean;
+  readonly onClose: () => void;
+  readonly scrollable?: boolean;
+  readonly title: string;
+}
+
+const CanvasModal = ({ children, isOpen, onClose, scrollable, title }: CanvasModalProps) => {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="canvas-modal-overlay" onClick={onClose}>
+      <div
+        className={scrollable ? "canvas-modal canvas-modal--scrollable" : "canvas-modal"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="canvas-modal__header">
+          <h3>{title}</h3>
+          <button
+            type="button"
+            className="canvas-modal__close"
+            aria-label={`Close ${title}`}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="canvas-modal__body">{children}</div>
+      </div>
+    </div>
+  );
+};
+
+const ShortcutsModalContent = () => (
+  <div className="canvas-modal__content">
+    <table className="shortcuts-table">
+      <tbody>
+        <tr>
+          <th scope="row">Cmd/Ctrl+K</th>
+          <td>Open Command Palette</td>
+        </tr>
+        <tr>
+          <th scope="row">Canvas shortcuts</th>
+          <td>tldraw keeps its native canvas shortcuts available inside the editor.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+);
+
+interface SettingsModalContentProps {
+  readonly aiEnabled: boolean;
+  readonly onAiEnabledChange: (enabled: boolean) => void;
+}
+
+const SettingsModalContent = ({ aiEnabled, onAiEnabledChange }: SettingsModalContentProps) => (
+  <div className="canvas-modal__content settings-modal">
+    <label className="settings-modal__toggle">
+      <input
+        type="checkbox"
+        checked={aiEnabled}
+        onChange={(event) => onAiEnabledChange(event.target.checked)}
+      />
+      Enable AI features
+    </label>
+    <p className="settings-modal__hint">
+      When enabled, the Notebook Assistant and AI actions become available. AI is disabled by default and makes no network calls until you enable it.
+    </p>
+  </div>
+);
+
+interface NotebookExportModalContentProps {
+  readonly exportJson: string;
+  readonly status: BackupStatus;
+  readonly onExport: () => void;
+}
+
+const NotebookExportModalContent = ({
+  exportJson,
+  status,
+  onExport
+}: NotebookExportModalContentProps) => (
+  <div className="canvas-modal__content notebook-backup">
+    <p>
+      Export preserves Sections, Pages, Canvas Items, Tags, and Canvas Regions while
+      excluding rebuildable Local Index data.
+    </p>
+    <button type="button" onClick={onExport}>
+      Export Notebook Backup
+    </button>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
+    {exportJson.length > 0 ? (
+      <label className="notebook-backup__json" htmlFor="canvas-modal-export-json">
+        Notebook Export JSON
+        <textarea id="canvas-modal-export-json" readOnly value={exportJson} />
+      </label>
+    ) : null}
+  </div>
+);
+
+interface NotebookImportModalContentProps {
+  readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly status: BackupStatus;
+}
+
+const NotebookImportModalContent = ({
+  onImport,
+  status
+}: NotebookImportModalContentProps) => (
+  <div className="canvas-modal__content notebook-backup">
+    <label htmlFor="canvas-modal-import" className="notebook-backup__json">
+      Import Notebook Export
+      <input
+        id="canvas-modal-import"
+        type="file"
+        accept="application/json,.json"
+        onChange={onImport}
+      />
+    </label>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
+  </div>
+);
 
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;
 
+const LAST_OPENED_PAGE_STORAGE_KEY = "notebook_last_opened_page";
+const ROOT_ROUTE_PREFERENCE_STORAGE_KEY = "notebook_root_route_preference";
+
+const getLastOpenedPage = (): { sectionId: SectionId; pageId: PageId } | null => {
+  try {
+    const stored = localStorage.getItem(LAST_OPENED_PAGE_STORAGE_KEY);
+    if (stored === null) return null;
+    const parsed = JSON.parse(stored) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { sectionId, pageId } = parsed as Record<string, unknown>;
+    if (typeof sectionId !== "string" || typeof pageId !== "string") return null;
+    if (!sectionId.startsWith("section_") || !pageId.startsWith("page_")) return null;
+    return { sectionId: sectionId as SectionId, pageId: pageId as PageId };
+  } catch {
+    return null;
+  }
+};
+
+const setLastOpenedPage = (sectionId: SectionId, pageId: PageId): void => {
+  try {
+    localStorage.setItem(
+      LAST_OPENED_PAGE_STORAGE_KEY,
+      JSON.stringify({ sectionId, pageId })
+    );
+  } catch {
+    // Ignore storage errors; last-opened page is best-effort
+  }
+};
+
+const getRootRoutePreference = (): "page" | "notebook" | null => {
+  try {
+    const storedPreference = localStorage.getItem(ROOT_ROUTE_PREFERENCE_STORAGE_KEY);
+    return storedPreference === "page" || storedPreference === "notebook"
+      ? storedPreference
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const setRootRoutePreference = (preference: "page" | "notebook"): void => {
+  try {
+    localStorage.setItem(ROOT_ROUTE_PREFERENCE_STORAGE_KEY, preference);
+  } catch {
+    // Ignore storage errors; root-route preference is best-effort.
+  }
+};
+
+const resolveOpeningPage = (
+  notebook: Notebook
+): { sectionId: SectionId; pageId: PageId } | null => {
+  const lastOpened = getLastOpenedPage();
+  if (lastOpened !== null) {
+    const page = getPage(notebook, lastOpened.pageId);
+    if (page !== undefined && page.sectionId === lastOpened.sectionId) {
+      return lastOpened;
+    }
+  }
+
+  const firstPage = notebook.pages[0];
+  if (firstPage !== undefined) {
+    return { sectionId: firstPage.sectionId, pageId: firstPage.id };
+  }
+
+  return null;
+};
+
 const tagsFromDraft = (draft: string): readonly string[] =>
   draft.split(",").map((tag) => tag.trim());
-
-const renamePage = (
-  notebook: Notebook,
-  pageId: PageId,
-  nextTitle: string
-): Notebook => {
-  const title = nextTitle.trim() || "Untitled Page";
-
-  return {
-    ...notebook,
-    pages: notebook.pages.map((page) =>
-      page.id === pageId ? { ...page, title } : page
-    )
-  };
-};
-
-const loadThemePreference = (): ThemePreference => {
-  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-
-  if (
-    storedTheme === "system" ||
-    storedTheme === "light" ||
-    storedTheme === "dark"
-  ) {
-    return storedTheme;
-  }
-
-  return "system";
-};
-
-const loadAiEnabledPreference = (): boolean =>
-  window.localStorage.getItem(AI_ENABLED_STORAGE_KEY) === "true";
-
-const resolvedTheme = (preference: ThemePreference): "light" | "dark" => {
-  if (preference !== "system") {
-    return preference;
-  }
-
-  if (typeof window.matchMedia !== "function") {
-    return "dark";
-  }
-
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-};
-
-const nextThemePreference = (preference: ThemePreference): ThemePreference => {
-  if (preference === "system") {
-    return "light";
-  }
-
-  if (preference === "light") {
-    return "dark";
-  }
-
-  return "system";
-};
-
-const themePreferenceLabel = (preference: ThemePreference): string => {
-  if (preference === "system") {
-    return "System";
-  }
-
-  return preference === "light" ? "Light" : "Dark";
-};
-
-const idFromLabel = (label: string): string =>
-  label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-const drawerSectionColor = (index: number): string => {
-  const colors = ["#5468ff", "#f59f00", "#2f9e44", "#9c36b5", "#0b7285"];
-
-  return colors[index % colors.length] ?? "#5468ff";
-};
-
-const prepareNotebookForDrawingScreen = (
-  notebook: Notebook
-): { readonly notebook: Notebook; readonly changed: boolean } => {
-  const hasDefaultSection = notebook.sections.some(
-    (section) => section.id === DEFAULT_SECTION_ID
-  );
-  const sections = hasDefaultSection
-    ? notebook.sections
-    : [
-        { id: DEFAULT_SECTION_ID, title: "Inbox" },
-        ...notebook.sections
-      ];
-  const hasOpenablePage = notebook.pages.some((page) =>
-    sections.some((section) => section.id === page.sectionId)
-  );
-  const pages = hasOpenablePage
-    ? notebook.pages
-    : [
-        ...notebook.pages,
-        {
-          id: DEFAULT_PAGE_ID,
-          sectionId: DEFAULT_SECTION_ID,
-          title: "Default Page",
-          pageType: null
-        }
-      ];
-
-  if (hasDefaultSection && hasOpenablePage) {
-    return { notebook, changed: false };
-  }
-
-  return {
-    notebook: {
-      ...notebook,
-      sections,
-      pages
-    },
-    changed: true
-  };
-};
-
-const initialRouteForNotebook = (
-  notebook: Notebook,
-  requestedRoute: PageRoute
-): PageRoute => {
-  if (requestedRoute.kind === "page") {
-    return requestedRoute;
-  }
-
-  const rememberedRoute = readLastOpenedPageRoute();
-
-  if (
-    rememberedRoute !== null &&
-    resolveActivePage(
-      notebook,
-      rememberedRoute.sectionId,
-      rememberedRoute.pageId
-    ).kind === "found"
-  ) {
-    return rememberedRoute;
-  }
-
-  const firstOpenablePage = notebook.pages.find((page) =>
-    notebook.sections.some((section) => section.id === page.sectionId)
-  );
-
-  if (firstOpenablePage !== undefined) {
-    return {
-      kind: "page",
-      sectionId: firstOpenablePage.sectionId,
-      pageId: firstOpenablePage.id
-    };
-  }
-
-  return { kind: "notebook" };
-};
-
-const readLastOpenedPageRoute = (): OpenPageRoute | null => {
-  const rawRoute = window.localStorage.getItem(LAST_OPENED_PAGE_STORAGE_KEY);
-
-  if (rawRoute === null) {
-    return null;
-  }
-
-  let parsedRoute: unknown;
-
-  try {
-    parsedRoute = JSON.parse(rawRoute) as unknown;
-  } catch {
-    window.localStorage.removeItem(LAST_OPENED_PAGE_STORAGE_KEY);
-    return null;
-  }
-
-  if (
-    typeof parsedRoute !== "object" ||
-    parsedRoute === null ||
-    !("sectionId" in parsedRoute) ||
-    !("pageId" in parsedRoute)
-  ) {
-    return null;
-  }
-
-  const sectionId = parsedRoute.sectionId;
-  const pageId = parsedRoute.pageId;
-
-  if (
-    typeof sectionId !== "string" ||
-    typeof pageId !== "string" ||
-    !sectionId.startsWith("section_") ||
-    !pageId.startsWith("page_")
-  ) {
-    return null;
-  }
-
-  return {
-    kind: "page",
-    sectionId: sectionId as SectionId,
-    pageId: pageId as PageId
-  };
-};
-
-const rememberLastOpenedPage = (route: PageRoute) => {
-  if (route.kind !== "page") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    LAST_OPENED_PAGE_STORAGE_KEY,
-    JSON.stringify({ sectionId: route.sectionId, pageId: route.pageId })
-  );
-};
 
 const diagramKindLabel = (kind: DiagramItemKind): string => {
   if (kind === "sticky-note") {

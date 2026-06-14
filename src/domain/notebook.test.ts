@@ -18,15 +18,19 @@ import {
 } from "./notebook";
 
 describe("Notebook Sections", () => {
-  it("opens a private Interview Prep Notebook with editable starter Sections", () => {
+  it("opens a private Interview Prep Notebook with Inbox Section and Default Page", () => {
     const notebook = createStarterNotebook();
 
     expect(notebook.title).toBe("Interview Prep Notebook");
     expect(notebook.privacyMode).toBe("private-by-default");
-    expect(notebook.sections.map((section) => section.title)).toEqual([
-      "DSA",
-      "System Design",
-      "Research"
+    expect(notebook.sections.map((section) => section.title)).toEqual(["Inbox"]);
+    expect(notebook.pages).toEqual([
+      {
+        id: "page_default",
+        sectionId: "section_inbox",
+        title: "Default Page",
+        pageType: null
+      }
     ]);
     expect(notebook.canvasItems).toEqual([]);
     expect(notebook.canvasRegions).toEqual([]);
@@ -34,48 +38,49 @@ describe("Notebook Sections", () => {
 
   it("renames, adds, and removes Sections without preserving a fixed taxonomy", () => {
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     const customizedNotebook = removeSection(
       addSection(
-        renameSection(starterNotebook, dsa.id, "Algorithms"),
+        addSection(
+          renameSection(starterNotebook, inbox.id, "Algorithms"),
+          "section_system_design",
+          "System Design"
+        ),
         "section_behavioral",
         "Behavioral"
       ),
-      "section_research"
+      "section_system_design"
     );
 
     expect(customizedNotebook.sections.map((section) => section.title)).toEqual([
       "Algorithms",
-      "System Design",
       "Behavioral"
     ]);
   });
 
   it("creates blank Pages with Page Type unset and removes them with their Section", () => {
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
+    const inbox = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithPage = addBlankPage(starterNotebook, inbox.id, "page_new");
 
-    expect(notebookWithPage.pages).toEqual([
-      {
-        id: "page_dsa",
-        sectionId: dsa.id,
-        title: "Untitled Page",
-        pageType: null
-      }
-    ]);
+    expect(notebookWithPage.pages).toContainEqual({
+      id: "page_new",
+      sectionId: inbox.id,
+      title: "Untitled Page",
+      pageType: null
+    });
 
-    expect(removeSection(notebookWithPage, dsa.id).pages).toEqual([]);
+    expect(removeSection(notebookWithPage, inbox.id).pages).toEqual([]);
   });
 
   it("saves text Canvas Items with app-owned Canvas Regions for a Page", () => {
@@ -391,17 +396,15 @@ describe("Notebook Sections", () => {
 
   it("adds and edits Diagram Items with labels, Tags, and app-owned Canvas Regions", () => {
     const starterNotebook = createStarterNotebook();
-    const systemDesign = starterNotebook.sections.find(
-      (section) => section.title === "System Design"
-    );
+    const inboxSection = starterNotebook.sections[0];
 
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
+    if (inboxSection === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     const notebookWithPage = addBlankPage(
       starterNotebook,
-      systemDesign.id,
+      inboxSection.id,
       "page_design"
     );
     const notebookWithDiagramItem = addDiagramCanvasItem(
@@ -535,17 +538,15 @@ describe("Notebook Sections", () => {
     ).toThrow("Cannot add a Diagram Item for an unknown Page.");
 
     const starterNotebook = createStarterNotebook();
-    const systemDesign = starterNotebook.sections.find(
-      (section) => section.title === "System Design"
-    );
+    const inboxSection = starterNotebook.sections[0];
 
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
+    if (inboxSection === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
     }
 
     expect(() =>
       addDiagramCanvasItem(
-        addBlankPage(starterNotebook, systemDesign.id, "page_design"),
+        addBlankPage(starterNotebook, inboxSection.id, "page_design"),
         "page_design",
         "canvas_item_empty",
         "label",

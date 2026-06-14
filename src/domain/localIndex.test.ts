@@ -7,27 +7,23 @@ import {
   addBlankPage,
   createStarterNotebook,
   replacePageCanvasItems,
-  replacePageTextCanvasItems
+  replacePageTextCanvasItems,
+  STARTER_INBOX_SECTION_ID
 } from "./notebook";
 import { buildLocalIndex, searchLocalIndex } from "./localIndex";
 
 describe("Local Index", () => {
   it("indexes Notebook path material and Text Canvas Items as rebuildable derived state", () => {
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
-    }
-
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithPage = addBlankPage(starterNotebook, STARTER_INBOX_SECTION_ID, "page_search");
     const notebookWithText = replacePageTextCanvasItems(
       notebookWithPage,
-      "page_dsa",
+      "page_search",
       [
         {
           id: "canvas_item_trace",
-          pageId: "page_dsa",
+          pageId: "page_search",
           type: "text",
           text: "Binary search invariant",
           tags: ["arrays"]
@@ -35,7 +31,7 @@ describe("Local Index", () => {
       ],
       [
         {
-          pageId: "page_dsa",
+          pageId: "page_search",
           canvasItemId: "canvas_item_trace",
           bounds: { x: 120, y: 80, width: 260, height: 64 }
         }
@@ -44,29 +40,30 @@ describe("Local Index", () => {
 
     const index = buildLocalIndex(notebookWithText);
 
-    expect(index.map((entry) => entry.id)).toEqual([
-      "page:page_dsa",
-      "text:canvas_item_trace"
-    ]);
-    expect(searchLocalIndex(index, "interview prep")).toEqual([
-      expect.objectContaining({
-        id: "page:page_dsa",
-        notebookPath: "Interview Prep Notebook / DSA / Untitled Page",
-        sourceLabel: "Notebook path"
-      }),
-      expect.objectContaining({
-        id: "text:canvas_item_trace",
-        notebookPath: "Interview Prep Notebook / DSA / Untitled Page",
-        sourceLabel: "Text Canvas Item"
-      })
-    ]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_search", "text:canvas_item_trace"])
+    );
+    expect(searchLocalIndex(index, "interview prep")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "page:page_search",
+          notebookPath: "Interview Prep Notebook / Inbox / Untitled Page",
+          sourceLabel: "Notebook path"
+        }),
+        expect.objectContaining({
+          id: "text:canvas_item_trace",
+          notebookPath: "Interview Prep Notebook / Inbox / Untitled Page",
+          sourceLabel: "Text Canvas Item"
+        })
+      ])
+    );
     expect(searchLocalIndex(index, "arrays")).toEqual([
       expect.objectContaining({
         id: "text:canvas_item_trace",
         canvasItemId: "canvas_item_trace",
         matchedTags: ["arrays"],
         canvasRegion: {
-          pageId: "page_dsa",
+          pageId: "page_search",
           canvasItemId: "canvas_item_trace",
           bounds: { x: 120, y: 80, width: 260, height: 64 }
         },
@@ -77,22 +74,15 @@ describe("Local Index", () => {
 
   it("indexes Link Card URLs, notes, and Tags without article body content", () => {
     const starterNotebook = createStarterNotebook();
-    const research = starterNotebook.sections.find(
-      (section) => section.title === "Research"
-    );
-
-    if (research === undefined) {
-      throw new Error("Expected seeded Research Section.");
-    }
 
     const notebookWithPage = addBlankPage(
       starterNotebook,
-      research.id,
-      "page_research"
+      STARTER_INBOX_SECTION_ID,
+      "page_link_test"
     );
     const notebookWithLinkCard = addLinkCardCanvasItem(
       notebookWithPage,
-      "page_research",
+      "page_link_test",
       "canvas_item_link_card",
       "https://example.com/system-design",
       "Queue for later distributed cache notes",
@@ -100,10 +90,9 @@ describe("Local Index", () => {
     );
     const index = buildLocalIndex(notebookWithLinkCard);
 
-    expect(index.map((entry) => entry.id)).toEqual([
-      "page:page_research",
-      "link-card:canvas_item_link_card"
-    ]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_link_test", "link-card:canvas_item_link_card"])
+    );
     expect(searchLocalIndex(index, "cache")).toEqual([
       expect.objectContaining({
         id: "link-card:canvas_item_link_card",
@@ -118,33 +107,27 @@ describe("Local Index", () => {
 
   it("indexes Code Block content and Tags with Canvas Region citations", () => {
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
 
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
-    }
-
-    const notebookWithPage = addBlankPage(starterNotebook, dsa.id, "page_dsa");
+    const notebookWithPage = addBlankPage(starterNotebook, STARTER_INBOX_SECTION_ID, "page_code");
     const notebookWithCodeBlock = addCodeBlockCanvasItem(
       notebookWithPage,
-      "page_dsa",
+      "page_code",
       "canvas_item_code_block",
       "const complement = target - nums[i];",
       ["two sum", "arrays"]
     );
     const index = buildLocalIndex(notebookWithCodeBlock);
 
-    expect(index.map((entry) => entry.id)).toEqual([
-      "page:page_dsa",
-      "code-block:canvas_item_code_block"
-    ]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_code", "code-block:canvas_item_code_block"])
+    );
     expect(searchLocalIndex(index, "complement")).toEqual([
       expect.objectContaining({
         id: "code-block:canvas_item_code_block",
         canvasItemId: "canvas_item_code_block",
         sourceLabel: "Code Block",
         canvasRegion: {
-          pageId: "page_dsa",
+          pageId: "page_code",
           canvasItemId: "canvas_item_code_block",
           bounds: { x: 0, y: 140, width: 520, height: 220 }
         },
@@ -160,22 +143,15 @@ describe("Local Index", () => {
 
   it("indexes Image Item captions and Tags without searching image bytes", () => {
     const starterNotebook = createStarterNotebook();
-    const systemDesign = starterNotebook.sections.find(
-      (section) => section.title === "System Design"
-    );
-
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
-    }
 
     const notebookWithPage = addBlankPage(
       starterNotebook,
-      systemDesign.id,
-      "page_design"
+      STARTER_INBOX_SECTION_ID,
+      "page_image"
     );
     const notebookWithImage = addImageCanvasItem(
       notebookWithPage,
-      "page_design",
+      "page_image",
       "canvas_item_diagram",
       "data:image/png;base64,c2VjcmV0LWJ5dGVz",
       "image/png",
@@ -184,10 +160,9 @@ describe("Local Index", () => {
     );
     const index = buildLocalIndex(notebookWithImage);
 
-    expect(index.map((entry) => entry.id)).toEqual([
-      "page:page_design",
-      "image:canvas_item_diagram"
-    ]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_image", "image:canvas_item_diagram"])
+    );
     expect(searchLocalIndex(index, "failover")).toEqual([
       expect.objectContaining({
         id: "image:canvas_item_diagram",
@@ -200,7 +175,7 @@ describe("Local Index", () => {
       expect.objectContaining({
         matchedTags: ["availability"],
         canvasRegion: {
-          pageId: "page_design",
+          pageId: "page_image",
           canvasItemId: "canvas_item_diagram",
           bounds: { x: 0, y: 380, width: 360, height: 240 }
         }
@@ -211,22 +186,15 @@ describe("Local Index", () => {
 
   it("indexes Diagram Item labels and Tags with Canvas Region citations", () => {
     const starterNotebook = createStarterNotebook();
-    const systemDesign = starterNotebook.sections.find(
-      (section) => section.title === "System Design"
-    );
-
-    if (systemDesign === undefined) {
-      throw new Error("Expected seeded System Design Section.");
-    }
 
     const notebookWithPage = addBlankPage(
       starterNotebook,
-      systemDesign.id,
-      "page_design"
+      STARTER_INBOX_SECTION_ID,
+      "page_diagram"
     );
     const notebookWithDiagramItem = addDiagramCanvasItem(
       notebookWithPage,
-      "page_design",
+      "page_diagram",
       "canvas_item_queue",
       "arrow",
       "API Gateway publishes to queue",
@@ -234,17 +202,16 @@ describe("Local Index", () => {
     );
     const index = buildLocalIndex(notebookWithDiagramItem);
 
-    expect(index.map((entry) => entry.id)).toEqual([
-      "page:page_design",
-      "diagram:canvas_item_queue"
-    ]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_diagram", "diagram:canvas_item_queue"])
+    );
     expect(searchLocalIndex(index, "publishes")).toEqual([
       expect.objectContaining({
         id: "diagram:canvas_item_queue",
         canvasItemId: "canvas_item_queue",
         sourceLabel: "Diagram Item",
         canvasRegion: {
-          pageId: "page_design",
+          pageId: "page_diagram",
           canvasItemId: "canvas_item_queue",
           bounds: { x: 420, y: 80, width: 260, height: 48 }
         },
@@ -260,20 +227,15 @@ describe("Local Index", () => {
 
   it("keeps Freehand Drawings addressable but out of the Local Index", () => {
     const starterNotebook = createStarterNotebook();
-    const dsa = starterNotebook.sections[0];
-
-    if (dsa === undefined) {
-      throw new Error("Expected seeded DSA Section.");
-    }
 
     const notebookWithDrawing = replacePageCanvasItems(
-      addBlankPage(starterNotebook, dsa.id, "page_dsa"),
-      "page_dsa",
+      addBlankPage(starterNotebook, STARTER_INBOX_SECTION_ID, "page_drawing"),
+      "page_drawing",
       [],
       [
         {
           id: "canvas_item_sketch",
-          pageId: "page_dsa",
+          pageId: "page_drawing",
           type: "freehand-drawing",
           shape: {
             type: "draw",
@@ -288,7 +250,7 @@ describe("Local Index", () => {
       ],
       [
         {
-          pageId: "page_dsa",
+          pageId: "page_drawing",
           canvasItemId: "canvas_item_sketch",
           bounds: { x: 20, y: 40, width: 160, height: 80 }
         }
@@ -296,10 +258,13 @@ describe("Local Index", () => {
     );
     const index = buildLocalIndex(notebookWithDrawing);
 
-    expect(index.map((entry) => entry.id)).toEqual(["page:page_dsa"]);
+    expect(index.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["page:page_drawing"])
+    );
+    expect(index.map((entry) => entry.id)).not.toContain("freehand-drawing:canvas_item_sketch");
     expect(searchLocalIndex(index, "encoded-handwriting-stroke")).toEqual([]);
     expect(notebookWithDrawing.canvasRegions).toContainEqual({
-      pageId: "page_dsa",
+      pageId: "page_drawing",
       canvasItemId: "canvas_item_sketch",
       bounds: { x: 20, y: 40, width: 160, height: 80 }
     });
