@@ -961,12 +961,20 @@ html[data-theme="dark"] .command-palette,
 html[data-theme="dark"] .hamburger-menu {
   border-color: rgba(232, 234, 240, 0.12);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
-}html[data-theme="dark"] .canvas-hud__left,
+}
+
+html[data-theme="dark"] .canvas-hud__left,
 html[data-theme="dark"] .canvas-hud__right,
 html[data-theme="dark"] .notebook-nav-group {
   background: rgba(35, 41, 61, 0.92);
   border-color: rgba(232, 234, 240, 0.12);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme="dark"] .notebook-nav-group button.notebook-nav-group__hamburger,
+html[data-theme="dark"] .notebook-nav-group button.notebook-nav-group__breadcrumb {
+  background: transparent;
+  color: #e8eaf0;
 }
 
 html[data-theme="dark"] .notebook-nav-group__hamburger:hover,
