@@ -681,6 +681,69 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.canvas-toast-area {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-end;
+  max-width: min(26rem, calc(100vw - 2.5rem));
+}
+
+.canvas-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.45;
+  box-shadow: 0 4px 24px rgba(23, 32, 51, 0.18);
+  backdrop-filter: blur(8px);
+  border: 1px solid transparent;
+}
+
+.canvas-toast--info {
+  background: rgba(255, 253, 247, 0.95);
+  color: #4d5871;
+  border-color: rgba(23, 32, 51, 0.1);
+}
+
+.canvas-toast--success {
+  background: rgba(230, 246, 217, 0.97);
+  color: #275719;
+  border-color: rgba(39, 87, 25, 0.15);
+}
+
+.canvas-toast--error {
+  background: rgba(255, 240, 237, 0.97);
+  color: #743126;
+  border-color: rgba(116, 49, 38, 0.15);
+}
+
+.canvas-toast__action {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.canvas-toast--error .canvas-toast__action {
+  background: #743126;
+  color: #fff;
+}
+
+.canvas-toast--error .canvas-toast__action:hover {
+  background: #5a2419;
+}
+
+
+
 .drawing-screen__body {
   flex: 1;
   overflow-y: auto;
@@ -1374,4 +1437,33 @@ html[data-theme="dark"] .drawing-screen__drawer-btn {
 
 html[data-theme="dark"] .drawing-screen__drawer-btn:hover {
   background: #3b4668;
+}
+
+/* Dark mode for Canvas Toasts */
+
+html[data-theme="dark"] .canvas-toast--info {
+  background: rgba(30, 36, 56, 0.97);
+  color: #c6cfde;
+  border-color: rgba(232, 234, 240, 0.12);
+}
+
+html[data-theme="dark"] .canvas-toast--success {
+  background: rgba(30, 60, 40, 0.97);
+  color: #a8dba0;
+  border-color: rgba(100, 180, 100, 0.2);
+}
+
+html[data-theme="dark"] .canvas-toast--error {
+  background: rgba(60, 25, 20, 0.97);
+  color: #ffc2b8;
+  border-color: rgba(232, 91, 70, 0.2);
+}
+
+html[data-theme="dark"] .canvas-toast--error .canvas-toast__action {
+  background: rgba(232, 91, 70, 0.8);
+  color: #fff;
+}
+
+html[data-theme="dark"] .canvas-toast--error .canvas-toast__action:hover {
+  background: rgba(232, 91, 70, 1);
 }

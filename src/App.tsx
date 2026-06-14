@@ -1395,6 +1395,18 @@ const DrawingScreen = ({
   const [commandQuery, setCommandQuery] = useState("");
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [showSlowSaveToast, setShowSlowSaveToast] = useState(false);
+
+  useEffect(() => {
+    if (saveStatus.kind !== "saving") {
+      return;
+    }
+    const timer = setTimeout(() => setShowSlowSaveToast(true), 1500);
+    return () => {
+      clearTimeout(timer);
+      setShowSlowSaveToast(false);
+    };
+  }, [saveStatus.kind]);
 
   useEffect(() => {
     if (!showHamburgerMenu) {
@@ -1666,13 +1678,6 @@ const DrawingScreen = ({
         <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
           Private Notebook
         </span>
-        {saveStatus.kind === "saving" || saveStatus.kind === "failed" || saveStatus.kind === "conflict" ? (
-          <DrawingScreenSaveStatus
-            status={saveStatus}
-            onRetry={onSaveRetry}
-            onConflictReload={onConflictReload}
-          />
-        ) : null}
       </header>
       <div className="drawing-screen__body">
         <div className="drawing-screen__canvas-area">
@@ -1782,6 +1787,13 @@ const DrawingScreen = ({
       >
         <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
       </CanvasModal>
+      <CanvasToastArea
+        saveStatus={saveStatus}
+        showSlowSaveToast={showSlowSaveToast}
+        backupStatus={backupStatus}
+        onSaveRetry={onSaveRetry}
+        onConflictReload={onConflictReload}
+      />
     </main>
   );
 };
@@ -1902,50 +1914,78 @@ const NotebookDrawer = ({
   </>
 );
 
-interface DrawingScreenSaveStatusProps {
-  readonly status: SaveStatus;
-  readonly onRetry: () => void;
+interface CanvasToastAreaProps {
+  readonly saveStatus: SaveStatus;
+  readonly showSlowSaveToast: boolean;
+  readonly backupStatus: BackupStatus;
+  readonly onSaveRetry: () => void;
   readonly onConflictReload: () => void;
 }
 
-const DrawingScreenSaveStatus = ({
-  status,
-  onRetry,
+const CanvasToastArea = ({
+  saveStatus,
+  showSlowSaveToast,
+  backupStatus,
+  onSaveRetry,
   onConflictReload
-}: DrawingScreenSaveStatusProps) => {
-  if (status.kind === "saving") {
-    return (
-      <span className="drawing-screen__save-status" aria-live="polite">
-        Saving…
-      </span>
+}: CanvasToastAreaProps) => {
+  const toasts: ReactNode[] = [];
+
+  if (showSlowSaveToast && saveStatus.kind === "saving") {
+    toasts.push(
+      <div key="saving" className="canvas-toast canvas-toast--info" aria-live="polite">
+        Saving Notebook changes…
+      </div>
     );
   }
 
-  if (status.kind === "failed") {
-    return (
-      <span
-        className="drawing-screen__save-status drawing-screen__save-status--failed"
-        role="alert"
-      >
-        Autosave failed
-        <button type="button" onClick={onRetry}>Retry Save</button>
-      </span>
+  if (saveStatus.kind === "failed") {
+    toasts.push(
+      <div key="save-failed" className="canvas-toast canvas-toast--error" role="alert">
+        <span>Autosave failed — your edits are not yet persisted. Retry before closing this tab.</span>
+        <button type="button" className="canvas-toast__action" onClick={onSaveRetry}>
+          Retry Save
+        </button>
+      </div>
     );
   }
 
-  if (status.kind === "conflict") {
-    return (
-      <span
-        className="drawing-screen__save-status drawing-screen__save-status--failed"
-        role="alert"
-      >
-        Another tab changed this Notebook
-        <button type="button" onClick={onConflictReload}>Reload Stored Notebook</button>
-      </span>
+  if (saveStatus.kind === "conflict") {
+    toasts.push(
+      <div key="conflict" className="canvas-toast canvas-toast--error" role="alert">
+        <span>Another tab changed this Notebook — autosave is paused.</span>
+        <button type="button" className="canvas-toast__action" onClick={onConflictReload}>
+          Reload Stored Notebook
+        </button>
+      </div>
     );
   }
 
-  return null;
+  if (backupStatus.kind === "success") {
+    toasts.push(
+      <div key="backup-success" className="canvas-toast canvas-toast--success" role="status">
+        {backupStatus.message}
+      </div>
+    );
+  }
+
+  if (backupStatus.kind === "failed") {
+    toasts.push(
+      <div key="backup-failed" className="canvas-toast canvas-toast--error" role="alert">
+        {backupStatus.message}
+      </div>
+    );
+  }
+
+  if (toasts.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="canvas-toast-area" aria-label="Notebook notifications">
+      {toasts}
+    </div>
+  );
 };
 
 interface EmptyCanvasPromptsProps {
