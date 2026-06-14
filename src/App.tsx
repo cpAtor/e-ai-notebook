@@ -1601,115 +1601,9 @@ const DrawingScreen = ({
 
   return (
     <main className="drawing-screen" aria-labelledby="ds-notebook-title">
-      <header className="drawing-screen__header">
-        <div className="drawing-screen__menu-wrap" ref={menuRef}>
-          <button
-            type="button"
-            className="hamburger-btn"
-            aria-label="Open notebook menu"
-            aria-expanded={showHamburgerMenu}
-            aria-haspopup="menu"
-            onClick={() => setShowHamburgerMenu((current) => !current)}
-          >
-            ≡
-          </button>
-          {showHamburgerMenu ? (
-            <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
-              <div className="hamburger-menu__section">
-                <span className="hamburger-menu__label">Theme</span>
-                <div className="theme-picker" role="group" aria-label="Theme picker">
-                  {(["system", "light", "dark"] as const).map((themeOption) => (
-                    <button
-                      key={themeOption}
-                      type="button"
-                      className={
-                        theme === themeOption
-                          ? "theme-picker__option theme-picker__option--active"
-                          : "theme-picker__option"
-                      }
-                      aria-pressed={theme === themeOption}
-                      onClick={() => {
-                        onThemeChange(themeOption);
-                        setShowHamburgerMenu(false);
-                      }}
-                    >
-                      {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="hamburger-menu__item"
-                onClick={() => openCanvasModal("shortcuts")}
-              >
-                Keyboard Shortcuts
-              </button>
-              <button
-                type="button"
-                className="hamburger-menu__item"
-                onClick={() => openCanvasModal("settings")}
-              >
-                Settings
-              </button>
-              <button
-                type="button"
-                className="hamburger-menu__item"
-                onClick={() => openCanvasModal("export")}
-              >
-                Export Notebook Backup
-              </button>
-              <button
-                type="button"
-                className="hamburger-menu__item"
-                onClick={() => openCanvasModal("import")}
-              >
-                Import Notebook Export
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          className="drawing-screen__drawer-btn"
-          aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
-          aria-expanded={isDrawerOpen}
-          onClick={() => setIsDrawerOpen((open) => !open)}
-        >
-          Pages
-        </button>
-        <button
-          type="button"
-          className="drawing-screen__notebook-btn"
-          onClick={onNotebookOpen}
-        >
-          Notebook Management
-        </button>
-        <button
-          type="button"
-          className="drawing-screen__search-btn"
-          onClick={() => setIsSearchOpen(true)}
-        >
-          Search Notebook
-        </button>
-        <h1 id="ds-notebook-title" className="drawing-screen__notebook-title">
-          {notebook.title}
-        </h1>
-        <div className="drawing-screen__page-crumb">
-          <span className="drawing-screen__section-name">{section.title}</span>
-          <h2 className="drawing-screen__page-title">{page.title}</h2>
-        </div>
-        <button
-          type="button"
-          className="drawing-screen__items-btn"
-          onClick={() => openCanvasModal("inspector")}
-        >
-          Canvas Items
-        </button>
-        <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
-          Private Notebook
-        </span>
-      </header>
+      <h1 id="ds-notebook-title" className="drawing-screen__sr-title">
+        {notebook.title}
+      </h1>
       <div className="drawing-screen__body">
         <div className="drawing-screen__canvas-area">
           <PageTextCanvas
@@ -1734,6 +1628,118 @@ const DrawingScreen = ({
           }}
           onClose={() => setIsDrawerOpen(false)}
         />
+      </div>
+      <div className="canvas-hud" aria-label="Canvas controls">
+        <div className="canvas-hud__left">
+          <div className="drawing-screen__menu-wrap" ref={menuRef}>
+            <button
+              type="button"
+              className="hamburger-btn"
+              aria-label="Open notebook menu"
+              aria-expanded={showHamburgerMenu}
+              aria-haspopup="menu"
+              onClick={() => setShowHamburgerMenu((current) => !current)}
+            >
+              ≡
+            </button>
+            {showHamburgerMenu ? (
+              <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
+                <div className="hamburger-menu__section">
+                  <span className="hamburger-menu__label">Theme</span>
+                  <div className="theme-picker" role="group" aria-label="Theme picker">
+                    {(["system", "light", "dark"] as const).map((themeOption) => (
+                      <button
+                        key={themeOption}
+                        type="button"
+                        className={
+                          theme === themeOption
+                            ? "theme-picker__option theme-picker__option--active"
+                            : "theme-picker__option"
+                        }
+                        aria-pressed={theme === themeOption}
+                        onClick={() => {
+                          onThemeChange(themeOption);
+                          setShowHamburgerMenu(false);
+                        }}
+                      >
+                        {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => openCanvasModal("shortcuts")}
+                >
+                  Keyboard Shortcuts
+                </button>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => openCanvasModal("settings")}
+                >
+                  Settings
+                </button>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => openCanvasModal("export")}
+                >
+                  Export Notebook Backup
+                </button>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => openCanvasModal("import")}
+                >
+                  Import Notebook Export
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="drawing-screen__drawer-btn"
+            aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+            aria-expanded={isDrawerOpen}
+            onClick={() => setIsDrawerOpen((open) => !open)}
+          >
+            Pages
+          </button>
+        </div>
+        <div className="canvas-hud__center">
+          <div className="drawing-screen__page-crumb">
+            <span className="drawing-screen__section-name">{section.title}</span>
+            <h2 className="drawing-screen__page-title">{page.title}</h2>
+          </div>
+        </div>
+        <div className="canvas-hud__right">
+          <button
+            type="button"
+            className="drawing-screen__search-btn"
+            onClick={() => setIsSearchOpen(true)}
+          >
+            Search Notebook
+          </button>
+          <button
+            type="button"
+            className="drawing-screen__notebook-btn"
+            onClick={onNotebookOpen}
+          >
+            Notebook Management
+          </button>
+          <button
+            type="button"
+            className="drawing-screen__items-btn"
+            onClick={() => openCanvasModal("inspector")}
+          >
+            Canvas Items
+          </button>
+          <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
+            Private Notebook
+          </span>
+        </div>
       </div>
       <CommandPalette
         actions={commandActions}
