@@ -133,7 +133,7 @@ const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   icons: Object.fromEntries(
     iconTypes.map((iconType) => [
       iconType,
-      `data:image/svg+xml,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg'/>")}`
+      `/tldraw-icons/icon/0_merged.svg#${iconType}`
     ])
   ),
   embedIcons: {
