@@ -41,8 +41,12 @@ The default product surface for both new and returning users: a Page opened dire
 _Avoid_: Dashboard, landing page, workspace
 
 **Canvas Visual Style**:
-An Excalidraw-inspired visual feel for the Drawing Screen, prioritizing readable, spacious canvas typography over dashboard-style web UI.
+An Excalidraw-native visual feel for the Drawing Screen, preserving Excalidraw's editor affordances while prioritizing readable, spacious canvas typography over dashboard-style web UI.
 _Avoid_: Web dashboard, form-heavy app shell
+
+**Notebook Canvas**:
+A deep Drawing Screen module that owns canvas-engine integration for a Page, including Canvas Item rendering, Canvas Region synchronization, native editor controls, theme defaults, and Notebook actions.
+_Avoid_: Canvas wrapper, renderer, embedded editor
 
 **Canvas Note Font**:
 Nunito, used as the preferred readable font for normal note-taking on the canvas.
