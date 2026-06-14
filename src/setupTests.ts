@@ -64,15 +64,25 @@ vi.mock("tldraw", async () => {
       ) => void | (() => void);
       readonly components?: {
         readonly StylePanel?: React.ComponentType<object>;
+        readonly MainMenu?: React.ComponentType<object>;
+        readonly PageMenu?: React.ComponentType<object>;
       };
     }) => {
       React.useEffect(() => onMount?.(createMockTldrawEditor()), [onMount]);
 
       const StylePanelComponent = components?.StylePanel;
+      const MainMenuComponent = components?.MainMenu;
+      const PageMenuComponent = components?.PageMenu;
 
       return React.createElement(
         "div",
         { "aria-label": "Mock tldraw editor" },
+        MainMenuComponent
+          ? React.createElement(MainMenuComponent, {})
+          : null,
+        PageMenuComponent
+          ? React.createElement(PageMenuComponent, {})
+          : null,
         StylePanelComponent
           ? React.createElement(StylePanelComponent, {})
           : null

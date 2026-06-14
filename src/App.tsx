@@ -2,9 +2,11 @@ import {
   ChangeEvent,
   ClipboardEvent,
   ComponentProps,
+  createContext,
   FormEvent,
   ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -1353,6 +1355,190 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
   );
 };
 
+// ── Drawing Screen surface types (module-level for context access) ────────────
+
+type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspector";
+
+type ActiveSurface =
+  | null
+  | "menu"
+  | "drawer"
+  | "search"
+  | "command-palette"
+  | { readonly kind: "modal"; readonly modal: CanvasModalKind };
+
+// Context provided to tldraw component overrides so they can access app state.
+interface DrawingScreenContextValue {
+  readonly section: Section;
+  readonly page: Page;
+  readonly activeSurface: ActiveSurface;
+  readonly theme: Theme;
+  readonly setActiveSurface: (s: ActiveSurface) => void;
+  readonly openCanvasModal: (modal: CanvasModalKind) => void;
+  readonly onNotebookOpen: () => void;
+  readonly onThemeChange: (theme: Theme) => void;
+}
+
+const DrawingScreenCtx = createContext<DrawingScreenContextValue | null>(null);
+
+const useDrawingScreenCtx = (): DrawingScreenContextValue => {
+  const ctx = useContext(DrawingScreenCtx);
+  if (ctx === null) {
+    throw new Error("DrawingScreenCtx used outside DrawingScreen");
+  }
+  return ctx;
+};
+
+// Canvas-native main menu: replaces tldraw's hamburger with notebook actions.
+const NotebookMainMenu = () => {
+  const {
+    activeSurface,
+    theme,
+    setActiveSurface,
+    openCanvasModal,
+    onNotebookOpen,
+    onThemeChange
+  } = useDrawingScreenCtx();
+  const showMenu = activeSurface === "menu";
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setActiveSurface(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showMenu, setActiveSurface]);
+
+  return (
+    <div className="drawing-screen__menu-wrap" ref={menuRef}>
+      <button
+        type="button"
+        className="hamburger-btn"
+        aria-label="Open notebook menu"
+        aria-expanded={showMenu}
+        aria-haspopup="menu"
+        onClick={() => setActiveSurface(showMenu ? null : "menu")}
+      >
+        ≡
+      </button>
+      {showMenu ? (
+        <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
+          <div className="hamburger-menu__section">
+            <span className="hamburger-menu__label">Theme</span>
+            <div className="theme-picker" role="group" aria-label="Theme picker">
+              {(["system", "light", "dark"] as const).map((themeOption) => (
+                <button
+                  key={themeOption}
+                  type="button"
+                  className={
+                    theme === themeOption
+                      ? "theme-picker__option theme-picker__option--active"
+                      : "theme-picker__option"
+                  }
+                  aria-pressed={theme === themeOption}
+                  onClick={() => {
+                    onThemeChange(themeOption);
+                    setActiveSurface(null);
+                  }}
+                >
+                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <hr className="hamburger-menu__divider" />
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => setActiveSurface("search")}
+          >
+            Search Notebook
+          </button>
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => {
+              setActiveSurface(null);
+              onNotebookOpen();
+            }}
+          >
+            Notebook Management
+          </button>
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => openCanvasModal("inspector")}
+          >
+            Canvas Items
+          </button>
+          <hr className="hamburger-menu__divider" />
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => openCanvasModal("shortcuts")}
+          >
+            Keyboard Shortcuts
+          </button>
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => openCanvasModal("settings")}
+          >
+            Settings
+          </button>
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => openCanvasModal("export")}
+          >
+            Export Notebook Backup
+          </button>
+          <button
+            type="button"
+            className="hamburger-menu__item"
+            onClick={() => openCanvasModal("import")}
+          >
+            Import Notebook Export
+          </button>
+          <div className="hamburger-menu__privacy" aria-label="Notebook privacy mode">
+            🔒 Private by Default
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+// Canvas-native page breadcrumb: replaces tldraw's "Page 1" with Section › Page context.
+const NotebookPageBreadcrumb = () => {
+  const { section, page, activeSurface, setActiveSurface } = useDrawingScreenCtx();
+  const isDrawerOpen = activeSurface === "drawer";
+
+  return (
+    <>
+      <h2 className="sr-only">{page.title}</h2>
+      <button
+        type="button"
+        className="canvas-hud__page-chip"
+        aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+        aria-expanded={isDrawerOpen}
+        onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
+      >
+        <span className="drawing-screen__section-name">{section.title}</span>
+        <span className="drawing-screen__page-title">{page.title}</span>
+      </button>
+    </>
+  );
+};
+
 interface DrawingScreenProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
@@ -1423,17 +1609,9 @@ const DrawingScreen = ({
   const effectiveTheme = getEffectiveTheme(theme);
 
   // Single active-surface state machine: at most one major surface open at a time.
-  type ActiveSurface =
-    | null
-    | "menu"
-    | "drawer"
-    | "search"
-    | "command-palette"
-    | { readonly kind: "modal"; readonly modal: CanvasModalKind };
   const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
 
   // Derived surface flags for readability.
-  const showHamburgerMenu = activeSurface === "menu";
   const isDrawerOpen = activeSurface === "drawer";
   const isCommandPaletteOpen = activeSurface === "command-palette";
   const isSearchOpen = activeSurface === "search";
@@ -1444,7 +1622,6 @@ const DrawingScreen = ({
 
   const [commandQuery, setCommandQuery] = useState("");
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const [showSlowSaveToast, setShowSlowSaveToast] = useState(false);
 
   useEffect(() => {
@@ -1457,22 +1634,6 @@ const DrawingScreen = ({
       setShowSlowSaveToast(false);
     };
   }, [saveStatus.kind]);
-
-  useEffect(() => {
-    if (!showHamburgerMenu) {
-      return;
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setActiveSurface(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [showHamburgerMenu]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1503,6 +1664,13 @@ const DrawingScreen = ({
   };
 
   const closeCanvasModal = () => setActiveSurface(null);
+
+  // tldraw component overrides — MainMenu and PageMenu integrate app chrome into the canvas-native top bar.
+  const tlComponents = useMemo((): TLComponents => ({
+    StylePanel: SelectionOnlyStylePanel,
+    MainMenu: NotebookMainMenu,
+    PageMenu: NotebookPageBreadcrumb,
+  }), []);
 
   if (activePage.kind === "invalid-section") {
     return (
@@ -1616,229 +1784,128 @@ const DrawingScreen = ({
   ];
 
   return (
-    <main className="drawing-screen" aria-labelledby="ds-notebook-title">
-      <h1 id="ds-notebook-title" className="drawing-screen__sr-title">
-        {notebook.title}
-      </h1>
-      <div className="drawing-screen__body">
-        <div className="drawing-screen__canvas-area">
-          <PageTextCanvas
-            page={page}
+    <DrawingScreenCtx.Provider value={{
+      section,
+      page,
+      activeSurface,
+      theme,
+      setActiveSurface,
+      openCanvasModal,
+      onNotebookOpen,
+      onThemeChange,
+    }}>
+      <main className="drawing-screen" aria-labelledby="ds-notebook-title">
+        <h1 id="ds-notebook-title" className="drawing-screen__sr-title">
+          {notebook.title}
+        </h1>
+        <div className="drawing-screen__body">
+          <div className="drawing-screen__canvas-area">
+            <PageTextCanvas
+              page={page}
+              notebook={notebook}
+              highlightedCanvasItemId={highlightedCanvasItemId}
+              theme={effectiveTheme}
+              tlComponents={tlComponents}
+              onPageTextCanvasChange={onPageTextCanvasChange}
+            />
+          </div>
+          <NotebookDrawer
+            isOpen={isDrawerOpen}
             notebook={notebook}
-            highlightedCanvasItemId={highlightedCanvasItemId}
-            theme={effectiveTheme}
-            onPageTextCanvasChange={onPageTextCanvasChange}
+            currentPageId={page.id}
+            onPageOpen={(sectionId, pageId) => {
+              setActiveSurface(null);
+              onPageOpen(sectionId, pageId);
+            }}
+            onPageCreate={(sectionId) => {
+              setActiveSurface(null);
+              onPageCreate(sectionId);
+            }}
+            onClose={() => setActiveSurface(null)}
           />
         </div>
-        <NotebookDrawer
-          isOpen={isDrawerOpen}
+        <CommandPalette
+          actions={commandActions}
+          activeIndex={activeCommandIndex}
+          isOpen={isCommandPaletteOpen}
+          query={commandQuery}
+          onActiveIndexChange={setActiveCommandIndex}
+          onClose={() => { setActiveSurface(null); setCommandQuery(""); setActiveCommandIndex(0); }}
+          onQueryChange={setCommandQuery}
+        />
+        <CanvasModal
+          isOpen={activeModal === "shortcuts"}
+          title="Keyboard Shortcuts"
+          onClose={closeCanvasModal}
+        >
+          <ShortcutsModalContent />
+        </CanvasModal>
+        <CanvasModal
+          isOpen={activeModal === "settings"}
+          title="Settings"
+          onClose={closeCanvasModal}
+        >
+          <SettingsModalContent aiEnabled={aiEnabled} onAiEnabledChange={onAiEnabledChange} />
+        </CanvasModal>
+        <CanvasModal
+          isOpen={activeModal === "export"}
+          title="Export Notebook Backup"
+          onClose={closeCanvasModal}
+        >
+          <NotebookExportModalContent
+            exportJson={notebookExportJson}
+            status={backupStatus}
+            onExport={onNotebookExport}
+          />
+        </CanvasModal>
+        <CanvasModal
+          isOpen={activeModal === "import"}
+          title="Import Notebook Export"
+          onClose={closeCanvasModal}
+        >
+          <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
+        </CanvasModal>
+        <CanvasModal
+          isOpen={activeModal === "inspector"}
+          title="Canvas Items"
+          onClose={closeCanvasModal}
+          scrollable
+        >
+          <ItemInspectorContent
+            page={page}
+            notebook={notebook}
+            pageTextItems={pageTextItems}
+            highlightedCanvasItemId={highlightedCanvasItemId}
+            onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
+            onLinkCardAdd={onLinkCardAdd}
+            onLinkCardTagsChange={onLinkCardTagsChange}
+            onImageItemAdd={onImageItemAdd}
+            onImageItemMetadataChange={onImageItemMetadataChange}
+            onDiagramItemAdd={onDiagramItemAdd}
+            onDiagramItemChange={onDiagramItemChange}
+            onCodeBlockAdd={onCodeBlockAdd}
+            onCodeBlockChange={onCodeBlockChange}
+          />
+        </CanvasModal>
+        <CanvasToastArea
+          saveStatus={saveStatus}
+          showSlowSaveToast={showSlowSaveToast}
+          backupStatus={backupStatus}
+          onSaveRetry={onSaveRetry}
+          onConflictReload={onConflictReload}
+        />
+        <SearchOverlay
+          isOpen={isSearchOpen}
+          query={searchQuery}
+          results={searchResults}
           notebook={notebook}
-          currentPageId={page.id}
-          onPageOpen={(sectionId, pageId) => {
-            setActiveSurface(null);
-            onPageOpen(sectionId, pageId);
-          }}
-          onPageCreate={(sectionId) => {
-            setActiveSurface(null);
-            onPageCreate(sectionId);
-          }}
-          onClose={() => setActiveSurface(null)}
+          onQueryChange={onSearchQueryChange}
+          onResultOpen={onSearchResultOpen}
+          onClose={() => { setActiveSurface(null); onSearchQueryChange(""); }}
         />
-      </div>
-      <div className="canvas-hud" aria-label="Canvas controls">
-        <div className="canvas-hud__left">
-          <div className="drawing-screen__menu-wrap" ref={menuRef}>
-            <button
-              type="button"
-              className="hamburger-btn"
-              aria-label="Open notebook menu"
-              aria-expanded={showHamburgerMenu}
-              aria-haspopup="menu"
-              onClick={() => setActiveSurface(showHamburgerMenu ? null : "menu")}
-            >
-              ≡
-            </button>
-            {showHamburgerMenu ? (
-              <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
-                <div className="hamburger-menu__section">
-                  <span className="hamburger-menu__label">Theme</span>
-                  <div className="theme-picker" role="group" aria-label="Theme picker">
-                    {(["system", "light", "dark"] as const).map((themeOption) => (
-                      <button
-                        key={themeOption}
-                        type="button"
-                        className={
-                          theme === themeOption
-                            ? "theme-picker__option theme-picker__option--active"
-                            : "theme-picker__option"
-                        }
-                        aria-pressed={theme === themeOption}
-                        onClick={() => {
-                          onThemeChange(themeOption);
-                          setActiveSurface(null);
-                        }}
-                      >
-                        {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <hr className="hamburger-menu__divider" />
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => setActiveSurface("search")}
-                >
-                  Search Notebook
-                </button>
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => {
-                    setActiveSurface(null);
-                    onNotebookOpen();
-                  }}
-                >
-                  Notebook Management
-                </button>
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => openCanvasModal("inspector")}
-                >
-                  Canvas Items
-                </button>
-                <hr className="hamburger-menu__divider" />
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => openCanvasModal("shortcuts")}
-                >
-                  Keyboard Shortcuts
-                </button>
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => openCanvasModal("settings")}
-                >
-                  Settings
-                </button>
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => openCanvasModal("export")}
-                >
-                  Export Notebook Backup
-                </button>
-                <button
-                  type="button"
-                  className="hamburger-menu__item"
-                  onClick={() => openCanvasModal("import")}
-                >
-                  Import Notebook Export
-                </button>
-                <div className="hamburger-menu__privacy" aria-label="Notebook privacy mode">
-                  🔒 Private by Default
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="canvas-hud__center">
-          <h2 className="sr-only">{page.title}</h2>
-          <button
-            type="button"
-            className="canvas-hud__page-chip"
-            aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
-            aria-expanded={isDrawerOpen}
-            onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
-          >
-            <span className="drawing-screen__section-name">{section.title}</span>
-            <span className="drawing-screen__page-title">{page.title}</span>
-          </button>
-        </div>
-      </div>
-      <CommandPalette
-        actions={commandActions}
-        activeIndex={activeCommandIndex}
-        isOpen={isCommandPaletteOpen}
-        query={commandQuery}
-        onActiveIndexChange={setActiveCommandIndex}
-        onClose={() => { setActiveSurface(null); setCommandQuery(""); setActiveCommandIndex(0); }}
-        onQueryChange={setCommandQuery}
-      />
-      <CanvasModal
-        isOpen={activeModal === "shortcuts"}
-        title="Keyboard Shortcuts"
-        onClose={closeCanvasModal}
-      >
-        <ShortcutsModalContent />
-      </CanvasModal>
-      <CanvasModal
-        isOpen={activeModal === "settings"}
-        title="Settings"
-        onClose={closeCanvasModal}
-      >
-        <SettingsModalContent aiEnabled={aiEnabled} onAiEnabledChange={onAiEnabledChange} />
-      </CanvasModal>
-      <CanvasModal
-        isOpen={activeModal === "export"}
-        title="Export Notebook Backup"
-        onClose={closeCanvasModal}
-      >
-        <NotebookExportModalContent
-          exportJson={notebookExportJson}
-          status={backupStatus}
-          onExport={onNotebookExport}
-        />
-      </CanvasModal>
-      <CanvasModal
-        isOpen={activeModal === "import"}
-        title="Import Notebook Export"
-        onClose={closeCanvasModal}
-      >
-        <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
-      </CanvasModal>
-      <CanvasModal
-        isOpen={activeModal === "inspector"}
-        title="Canvas Items"
-        onClose={closeCanvasModal}
-        scrollable
-      >
-        <ItemInspectorContent
-          page={page}
-          notebook={notebook}
-          pageTextItems={pageTextItems}
-          highlightedCanvasItemId={highlightedCanvasItemId}
-          onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
-          onLinkCardAdd={onLinkCardAdd}
-          onLinkCardTagsChange={onLinkCardTagsChange}
-          onImageItemAdd={onImageItemAdd}
-          onImageItemMetadataChange={onImageItemMetadataChange}
-          onDiagramItemAdd={onDiagramItemAdd}
-          onDiagramItemChange={onDiagramItemChange}
-          onCodeBlockAdd={onCodeBlockAdd}
-          onCodeBlockChange={onCodeBlockChange}
-        />
-      </CanvasModal>
-      <CanvasToastArea
-        saveStatus={saveStatus}
-        showSlowSaveToast={showSlowSaveToast}
-        backupStatus={backupStatus}
-        onSaveRetry={onSaveRetry}
-        onConflictReload={onConflictReload}
-      />
-      <SearchOverlay
-        isOpen={isSearchOpen}
-        query={searchQuery}
-        results={searchResults}
-        notebook={notebook}
-        onQueryChange={onSearchQueryChange}
-        onResultOpen={onSearchResultOpen}
-        onClose={() => { setActiveSurface(null); onSearchQueryChange(""); }}
-      />
-      {aiEnabled ? <AssistantBubble /> : null}
-    </main>
+        {aiEnabled ? <AssistantBubble /> : null}
+      </main>
+    </DrawingScreenCtx.Provider>
   );
 };
 
@@ -2201,6 +2268,7 @@ interface PageTextCanvasProps {
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly theme: EffectiveTheme;
+  readonly tlComponents?: TLComponents;
   readonly onEditorReady?: (editor: TldrawEditor | null) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
@@ -2213,6 +2281,7 @@ const PageTextCanvas = ({
   notebook,
   highlightedCanvasItemId,
   theme,
+  tlComponents = PAGE_TEXT_CANVAS_COMPONENTS,
   onEditorReady,
   onPageTextCanvasChange
 }: PageTextCanvasProps) => {
@@ -2345,7 +2414,7 @@ const PageTextCanvas = ({
       <Tldraw
         assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
         autoFocus
-        components={PAGE_TEXT_CANVAS_COMPONENTS}
+        components={tlComponents}
         initialState="text"
         onMount={handleMount}
       />
@@ -3230,8 +3299,6 @@ interface CommandAction {
   readonly keywords: string;
   readonly run: () => void;
 }
-
-type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspector";
 
 interface CommandPaletteProps {
   readonly actions: readonly CommandAction[];
