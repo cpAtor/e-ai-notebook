@@ -1475,7 +1475,7 @@ const DrawingScreen = ({
     },
     {
       id: "search",
-      label: "Search",
+      label: "Search Notebook",
       group: "notebook" as const,
       active: isSearchOpen,
       onSelect: () => setActiveSurface("search")

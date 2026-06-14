@@ -1,6 +1,10 @@
-import { Excalidraw, convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import {
+  Excalidraw,
+  MainMenu,
+  convertToExcalidrawElements
+} from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef } from "react";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type {
@@ -162,7 +166,6 @@ export const NotebookCanvas = ({
         initialData={initialData}
         name={page.title}
         onChange={handleChange}
-        renderTopRightUI={() => <NotebookCanvasMenu actions={actions} />}
         theme={theme}
         UIOptions={{
           canvasActions: {
@@ -175,75 +178,48 @@ export const NotebookCanvas = ({
             toggleTheme: false
           }
         }}
-      />
+      >
+        <NotebookMainMenu actions={actions} />
+      </Excalidraw>
     </div>
   );
 };
 
-const NotebookCanvasMenu = ({
+const NotebookMainMenu = ({
   actions
 }: {
   readonly actions: readonly NotebookCanvasAction[];
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const groupedActions = actionGroups(actions);
 
-  const selectAction = (action: NotebookCanvasAction) => {
-    setIsOpen(false);
-    action.onSelect();
-  };
-
   return (
-    <div className="notebook-canvas-menu">
-      <button
-        type="button"
-        className="notebook-canvas-menu__button"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((current) => !current)}
-      >
-        Menu
-      </button>
-      {isOpen ? (
-        <div
-          className="notebook-canvas-menu__popover"
-          role="menu"
-          aria-label="Notebook actions"
-        >
-          {groupedActions.map((group) => (
-            <div
-              key={group.id}
-              className="notebook-canvas-menu__section"
-              role="group"
-              aria-label={group.label}
+    <MainMenu>
+      <MainMenu.DefaultItems.SearchMenu />
+      <MainMenu.DefaultItems.ChangeCanvasBackground />
+      <MainMenu.DefaultItems.ClearCanvas />
+      <MainMenu.DefaultItems.Help />
+      <MainMenu.Separator />
+      {groupedActions.map((group) => (
+        <MainMenu.Group key={group.id} title={group.label}>
+          {group.actions.map((action) => (
+            <MainMenu.Item
+              key={action.id}
+              selected={action.active}
+              onSelect={() => action.onSelect()}
             >
-              <span className="notebook-canvas-menu__label">{group.label}</span>
-              {group.actions.map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  className={
-                    action.active
-                      ? "notebook-canvas-menu__item notebook-canvas-menu__item--active"
-                      : "notebook-canvas-menu__item"
-                  }
-                  aria-pressed={action.active}
-                  role="menuitem"
-                  onClick={() => selectAction(action)}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
+              {action.label}
+            </MainMenu.Item>
           ))}
-          <div
-            className="notebook-canvas-menu__privacy"
-            aria-label="Notebook privacy mode"
-          >
-            Private by Default
-          </div>
-        </div>
-      ) : null}
-    </div>
+        </MainMenu.Group>
+      ))}
+      <MainMenu.Separator />
+      <MainMenu.ItemCustom
+        className="notebook-main-menu-note"
+        aria-label="Notebook privacy mode"
+      >
+        Private by Default
+      </MainMenu.ItemCustom>
+    </MainMenu>
   );
 };
 

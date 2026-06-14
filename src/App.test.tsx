@@ -1154,7 +1154,7 @@ describe("App", () => {
     await renderApp(notebookWithCodeBlock);
     await screen.findByTestId("notebook-page-canvas");
 
-    await openMenuAndClick(user, "Search");
+    await openMenuAndClick(user, "Search Notebook");
 
     const searchDialog = await screen.findByRole("dialog", { name: "Search Notebook" });
     expect(searchDialog).toBeInTheDocument();
