@@ -122,50 +122,12 @@ const applyThemeToDocument = (theme: Theme) => {
 };
 
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
-  fonts: {
-    tldraw_draw: "data:font/woff2;base64,",
-    tldraw_draw_bold: "data:font/woff2;base64,",
-    tldraw_draw_italic: "data:font/woff2;base64,",
-    tldraw_draw_italic_bold: "data:font/woff2;base64,",
-    tldraw_mono: "data:font/woff2;base64,",
-    tldraw_mono_bold: "data:font/woff2;base64,",
-    tldraw_mono_italic: "data:font/woff2;base64,",
-    tldraw_mono_italic_bold: "data:font/woff2;base64,",
-    tldraw_sans: "data:font/woff2;base64,",
-    tldraw_sans_bold: "data:font/woff2;base64,",
-    tldraw_sans_italic: "data:font/woff2;base64,",
-    tldraw_sans_italic_bold: "data:font/woff2;base64,",
-    tldraw_serif: "data:font/woff2;base64,",
-    tldraw_serif_bold: "data:font/woff2;base64,",
-    tldraw_serif_italic: "data:font/woff2;base64,",
-    tldraw_serif_italic_bold: "data:font/woff2;base64,"
-  },
   icons: Object.fromEntries(
     iconTypes.map((iconType) => [
       iconType,
       `/tldraw-icons/icon/0_merged.svg#${iconType}`
     ])
   ),
-  embedIcons: {
-    canva: "data:image/png;base64,",
-    codepen: "data:image/png;base64,",
-    codesandbox: "data:image/png;base64,",
-    desmos: "data:image/png;base64,",
-    felt: "data:image/png;base64,",
-    figma: "data:image/png;base64,",
-    github_gist: "data:image/png;base64,",
-    google_calendar: "data:image/png;base64,",
-    google_maps: "data:image/png;base64,",
-    google_slides: "data:image/png;base64,",
-    observable: "data:image/png;base64,",
-    replit: "data:image/png;base64,",
-    scratch: "data:image/png;base64,",
-    spotify: "data:image/png;base64,",
-    tldraw: "data:image/png;base64,",
-    val_town: "data:image/png;base64,",
-    vimeo: "data:image/png;base64,",
-    youtube: "data:image/png;base64,"
-  },
   translations: {
     en: `data:application/json,${encodeURIComponent("{}")}`
   }
@@ -1389,9 +1351,13 @@ const useDrawingScreenCtx = (): DrawingScreenContextValue => {
   return ctx;
 };
 
-// Canvas-native main menu: replaces tldraw's hamburger with notebook actions.
+// Unified canvas-native navigation bar: replaces tldraw's MainMenu slot with a single
+// glass-pill group containing the notebook hamburger menu and the Section › Page breadcrumb.
+// PageMenu is set to null so this one component owns the entire top-left nav group.
 const NotebookMainMenu = () => {
   const {
+    section,
+    page,
     activeSurface,
     theme,
     setActiveSurface,
@@ -1400,6 +1366,7 @@ const NotebookMainMenu = () => {
     onThemeChange
   } = useDrawingScreenCtx();
   const showMenu = activeSurface === "menu";
+  const isDrawerOpen = activeSurface === "drawer";
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1418,16 +1385,27 @@ const NotebookMainMenu = () => {
   }, [showMenu, setActiveSurface]);
 
   return (
-    <div className="drawing-screen__menu-wrap" ref={menuRef}>
+    <div className="notebook-nav-group" ref={menuRef}>
+      <h2 className="sr-only">{page.title}</h2>
       <button
         type="button"
-        className="hamburger-btn"
+        className="notebook-nav-group__hamburger"
         aria-label="Open notebook menu"
         aria-expanded={showMenu}
         aria-haspopup="menu"
         onClick={() => setActiveSurface(showMenu ? null : "menu")}
       >
         ≡
+      </button>
+      <button
+        type="button"
+        className="notebook-nav-group__breadcrumb"
+        aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+        aria-expanded={isDrawerOpen}
+        onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
+      >
+        <span className="drawing-screen__section-name">{section.title}</span>
+        <span className="drawing-screen__page-title">{page.title}</span>
       </button>
       {showMenu ? (
         <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
@@ -1514,28 +1492,6 @@ const NotebookMainMenu = () => {
         </div>
       ) : null}
     </div>
-  );
-};
-
-// Canvas-native page breadcrumb: replaces tldraw's "Page 1" with Section › Page context.
-const NotebookPageBreadcrumb = () => {
-  const { section, page, activeSurface, setActiveSurface } = useDrawingScreenCtx();
-  const isDrawerOpen = activeSurface === "drawer";
-
-  return (
-    <>
-      <h2 className="sr-only">{page.title}</h2>
-      <button
-        type="button"
-        className="canvas-hud__page-chip"
-        aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
-        aria-expanded={isDrawerOpen}
-        onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
-      >
-        <span className="drawing-screen__section-name">{section.title}</span>
-        <span className="drawing-screen__page-title">{page.title}</span>
-      </button>
-    </>
   );
 };
 
@@ -1665,11 +1621,13 @@ const DrawingScreen = ({
 
   const closeCanvasModal = () => setActiveSurface(null);
 
-  // tldraw component overrides — MainMenu and PageMenu integrate app chrome into the canvas-native top bar.
+  // tldraw component overrides — NotebookMainMenu owns the entire top-left nav group
+  // (hamburger + breadcrumb in one unified pill); PageMenu is nulled out so tldraw's
+  // page-switcher slot is gone and there is no competing chrome.
   const tlComponents = useMemo((): TLComponents => ({
     StylePanel: SelectionOnlyStylePanel,
     MainMenu: NotebookMainMenu,
-    PageMenu: NotebookPageBreadcrumb,
+    PageMenu: null,
   }), []);
 
   if (activePage.kind === "invalid-section") {
