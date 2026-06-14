@@ -241,6 +241,9 @@ export const replacePageCanvasItems = (
       )
       .map((canvasItem) => canvasItem.id)
   );
+  const nextRegionCanvasItemIds = new Set(
+    nextRegions.map((region) => region.canvasItemId)
+  );
 
   if (!pageExists) {
     throw new Error("Cannot save Canvas Items for an unknown Page.");
@@ -274,7 +277,8 @@ export const replacePageCanvasItems = (
       ...notebook.canvasRegions.filter(
         (region) =>
           region.pageId !== pageId ||
-          !previousPageNativeCanvasItemIds.has(region.canvasItemId)
+          (!previousPageNativeCanvasItemIds.has(region.canvasItemId) &&
+            !nextRegionCanvasItemIds.has(region.canvasItemId))
       ),
       ...nextRegions
     ]

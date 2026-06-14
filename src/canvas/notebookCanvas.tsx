@@ -17,6 +17,7 @@ import type {
   CanvasItem,
   CanvasItemId,
   CanvasRegion,
+  DiagramItemKind,
   FreehandDrawingCanvasItem,
   Page,
   PageId,
@@ -50,6 +51,7 @@ interface NotebookCanvasProps {
 }
 
 const CANVAS_ITEM_META_KEY = "canvasItemId";
+const CANVAS_ITEM_TYPE_META_KEY = "canvasItemType";
 const DEFAULT_TEXT_WIDTH = 280;
 const DEFAULT_TEXT_HEIGHT = 72;
 const DEFAULT_FREEHAND_WIDTH = 180;
@@ -59,6 +61,7 @@ const NOTEBOOK_SOURCE = "interview-prep-notebook";
 type NotebookExcalidrawElement = ExcalidrawElement & {
   readonly customData?: {
     readonly [CANVAS_ITEM_META_KEY]?: unknown;
+    readonly [CANVAS_ITEM_TYPE_META_KEY]?: unknown;
     readonly source?: unknown;
   };
 };
@@ -83,7 +86,7 @@ export const NotebookCanvas = ({
     [canvasRegions, page.id]
   );
   const initialElements = useMemo(
-    () => toExcalidrawElements(pageCanvasItems, pageCanvasRegions, theme),
+    () => notebookCanvasElementsFromItems(pageCanvasItems, pageCanvasRegions, theme),
     [pageCanvasItems, pageCanvasRegions, theme]
   );
   const highlightedRegion = useMemo(
@@ -254,12 +257,18 @@ export const notebookCanvasSnapshotFromExcalidraw = (
 
   for (const element of elements) {
     const canvasItemId = canvasItemIdForExcalidrawElement(element);
+    const canvasItemType = canvasItemTypeForExcalidrawElement(element);
 
     if (element.isDeleted || canvasItemId === null) {
       continue;
     }
 
-    if (element.type === "text") {
+    if (canvasItemType !== null && canvasItemType !== "text" && canvasItemType !== "freehand-drawing") {
+      regions.push(regionForElement(pageId, canvasItemId, element));
+      continue;
+    }
+
+    if (element.type === "text" && (canvasItemType === null || canvasItemType === "text")) {
       const text = element.text.trim();
 
       if (text.length === 0) {
@@ -277,7 +286,10 @@ export const notebookCanvasSnapshotFromExcalidraw = (
       continue;
     }
 
-    if (element.type === "freedraw" || element.type === "line") {
+    if (
+      (element.type === "freedraw" || element.type === "line") &&
+      (canvasItemType === null || canvasItemType === "freehand-drawing")
+    ) {
       freehandDrawingItems.push({
         id: canvasItemId,
         pageId,
@@ -297,7 +309,7 @@ export const notebookCanvasSnapshotFromExcalidraw = (
   return { textItems, freehandDrawingItems, regions };
 };
 
-const toExcalidrawElements = (
+export const notebookCanvasElementsFromItems = (
   canvasItems: readonly CanvasItem[],
   regions: readonly CanvasRegion[],
   theme: NotebookCanvasTheme
@@ -333,10 +345,39 @@ const toExcalidrawElements = (
       return freehandDrawingToSkeleton(canvasItem, regions, theme);
     }
 
-    return [];
+    return metadataCanvasItemToSkeleton(canvasItem, regions, theme);
   });
 
   return convertToExcalidrawElements(skeletons, { regenerateIds: false });
+};
+
+const metadataCanvasItemToSkeleton = (
+  canvasItem: Exclude<CanvasItem, TextCanvasItem | FreehandDrawingCanvasItem>,
+  regions: readonly CanvasRegion[],
+  theme: NotebookCanvasTheme
+): ExcalidrawElementSkeleton[] => {
+  const bounds = boundsForCanvasItem(
+    canvasItem.id,
+    regions,
+    defaultBoundsForMetadataCanvasItem(canvasItem)
+  );
+
+  return [
+    {
+      type: "text",
+      id: elementIdForCanvasItem(canvasItem.id),
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      text: metadataCanvasItemText(canvasItem),
+      originalText: metadataCanvasItemText(canvasItem),
+      strokeColor: metadataCanvasItemStrokeColor(canvasItem, theme),
+      backgroundColor: metadataCanvasItemBackgroundColor(canvasItem, theme),
+      customData: notebookCustomData(canvasItem.id, canvasItem.type),
+      fontSize: canvasItem.type === "code-block" ? 18 : 20
+    } satisfies ExcalidrawElementSkeleton
+  ];
 };
 
 const freehandDrawingToSkeleton = (
@@ -411,6 +452,15 @@ const canvasItemIdForExcalidrawElement = (
   return null;
 };
 
+const canvasItemTypeForExcalidrawElement = (
+  element: ExcalidrawElement
+): CanvasItem["type"] | null => {
+  const customData = (element as NotebookExcalidrawElement).customData;
+  const customCanvasItemType = customData?.[CANVAS_ITEM_TYPE_META_KEY];
+
+  return isCanvasItemType(customCanvasItemType) ? customCanvasItemType : null;
+};
+
 const regionForElement = (
   pageId: PageId,
   canvasItemId: CanvasItemId,
@@ -452,13 +502,132 @@ const boundsForCanvasItem = (
 const elementIdForCanvasItem = (canvasItemId: CanvasItemId): string =>
   canvasItemId.replace(/^canvas_item_/, "notebook_");
 
-const notebookCustomData = (canvasItemId: CanvasItemId) => ({
+const notebookCustomData = (
+  canvasItemId: CanvasItemId,
+  canvasItemType?: CanvasItem["type"]
+) => ({
   [CANVAS_ITEM_META_KEY]: canvasItemId,
+  ...(canvasItemType === undefined ? {} : { [CANVAS_ITEM_TYPE_META_KEY]: canvasItemType }),
   source: NOTEBOOK_SOURCE
 });
 
 const isCanvasItemId = (value: unknown): value is CanvasItemId =>
   typeof value === "string" && value.startsWith("canvas_item_");
+
+const isCanvasItemType = (value: unknown): value is CanvasItem["type"] =>
+  value === "text" ||
+  value === "link-card" ||
+  value === "code-block" ||
+  value === "image" ||
+  value === "freehand-drawing" ||
+  value === "diagram";
+
+const defaultBoundsForMetadataCanvasItem = (
+  canvasItem: Exclude<CanvasItem, TextCanvasItem | FreehandDrawingCanvasItem>
+): CanvasRegion["bounds"] => {
+  if (canvasItem.type === "link-card") {
+    return { x: 0, y: 0, width: 320, height: 120 };
+  }
+
+  if (canvasItem.type === "code-block") {
+    return { x: 0, y: 140, width: 520, height: 220 };
+  }
+
+  if (canvasItem.type === "image") {
+    return { x: 0, y: 380, width: 360, height: 240 };
+  }
+
+  if (canvasItem.kind === "arrow") {
+    return { x: 420, y: 80, width: 260, height: 48 };
+  }
+
+  if (canvasItem.kind === "label") {
+    return { x: 420, y: 80, width: 220, height: 56 };
+  }
+
+  if (canvasItem.kind === "sticky-note") {
+    return { x: 420, y: 80, width: 220, height: 160 };
+  }
+
+  return { x: 420, y: 80, width: 240, height: 120 };
+};
+
+const metadataCanvasItemText = (
+  canvasItem: Exclude<CanvasItem, TextCanvasItem | FreehandDrawingCanvasItem>
+): string => {
+  if (canvasItem.type === "link-card") {
+    return joinCanvasItemLines([
+      "Link Card",
+      canvasItem.url,
+      canvasItem.note
+    ]);
+  }
+
+  if (canvasItem.type === "code-block") {
+    return joinCanvasItemLines(["Code Block", canvasItem.code]);
+  }
+
+  if (canvasItem.type === "image") {
+    return joinCanvasItemLines([
+      "Image Item",
+      canvasItem.caption || canvasItem.mediaType
+    ]);
+  }
+
+  return joinCanvasItemLines([
+    `Diagram Item: ${diagramKindLabel(canvasItem.kind)}`,
+    canvasItem.label
+  ]);
+};
+
+const joinCanvasItemLines = (lines: readonly string[]): string =>
+  lines.filter((line) => line.trim().length > 0).join("\n");
+
+const diagramKindLabel = (kind: DiagramItemKind): string => {
+  if (kind === "sticky-note") {
+    return "Sticky Note";
+  }
+
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+};
+
+const metadataCanvasItemStrokeColor = (
+  canvasItem: Exclude<CanvasItem, TextCanvasItem | FreehandDrawingCanvasItem>,
+  theme: NotebookCanvasTheme
+): string => {
+  if (canvasItem.type === "link-card") {
+    return theme === "dark" ? "#b8c5ff" : "#314ee8";
+  }
+
+  if (canvasItem.type === "code-block") {
+    return theme === "dark" ? "#dbe8ff" : "#172033";
+  }
+
+  if (canvasItem.type === "image") {
+    return theme === "dark" ? "#d7c4ff" : "#5f3dc4";
+  }
+
+  return theme === "dark" ? "#ffe0a3" : "#7a4a00";
+};
+
+const metadataCanvasItemBackgroundColor = (
+  canvasItem: Exclude<CanvasItem, TextCanvasItem | FreehandDrawingCanvasItem>,
+  theme: NotebookCanvasTheme
+): string => {
+  if (canvasItem.type === "link-card") {
+    return theme === "dark" ? "#243156" : "#eef2ff";
+  }
+
+  if (canvasItem.type === "code-block") {
+    return theme === "dark" ? "#20283d" : "#f1f5f9";
+  }
+
+  if (canvasItem.type === "image") {
+    return theme === "dark" ? "#33284d" : "#f3edff";
+  }
+
+  return theme === "dark" ? "#4a3418" : "#fff3c4";
+};
 
 const defaultStrokeColor = (theme: NotebookCanvasTheme): string =>
   theme === "dark" ? "#f5f7ff" : "#172033";

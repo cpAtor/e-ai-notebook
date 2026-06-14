@@ -3,7 +3,10 @@ import type {
   ExcalidrawFreeDrawElement,
   ExcalidrawTextElement
 } from "@excalidraw/excalidraw/element/types";
-import { notebookCanvasSnapshotFromExcalidraw } from "./notebookCanvas";
+import {
+  notebookCanvasElementsFromItems,
+  notebookCanvasSnapshotFromExcalidraw
+} from "./notebookCanvas";
 
 describe("Notebook Canvas Excalidraw adapter", () => {
   it("extracts text and freehand Canvas Items with app-owned Canvas Regions", () => {
@@ -128,6 +131,135 @@ describe("Notebook Canvas Excalidraw adapter", () => {
     expect(
       notebookCanvasSnapshotFromExcalidraw("page_dsa", [textElement]).textItems[0]?.id
     ).toBe("canvas_item_shape_new-text");
+  });
+
+  it("renders metadata Canvas Items as Notebook-owned Excalidraw elements", () => {
+    const elements = notebookCanvasElementsFromItems(
+      [
+        {
+          id: "canvas_item_link",
+          pageId: "page_dsa",
+          type: "link-card",
+          url: "https://example.com/two-sum",
+          note: "Practice source",
+          tags: ["arrays"]
+        },
+        {
+          id: "canvas_item_code",
+          pageId: "page_dsa",
+          type: "code-block",
+          code: "const seen = new Map();",
+          tags: ["hash map"]
+        },
+        {
+          id: "canvas_item_image",
+          pageId: "page_dsa",
+          type: "image",
+          dataUrl: "data:image/png;base64,ZGlhZ3JhbQ==",
+          mediaType: "image/png",
+          caption: "Failover sketch",
+          tags: ["availability"]
+        },
+        {
+          id: "canvas_item_diagram",
+          pageId: "page_dsa",
+          type: "diagram",
+          kind: "sticky-note",
+          label: "Queue absorbs spikes",
+          tags: ["backpressure"]
+        }
+      ],
+      [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_link",
+          bounds: { x: 12, y: 24, width: 320, height: 120 }
+        }
+      ],
+      "light"
+    );
+
+    expect(elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "notebook_link",
+          type: "text",
+          x: 12,
+          y: 24,
+          customData: expect.objectContaining({
+            canvasItemId: "canvas_item_link",
+            canvasItemType: "link-card"
+          }),
+          text: expect.stringContaining("https://example.com/two-sum")
+        }),
+        expect.objectContaining({
+          id: "notebook_code",
+          type: "text",
+          customData: expect.objectContaining({
+            canvasItemId: "canvas_item_code",
+            canvasItemType: "code-block"
+          }),
+          text: expect.stringContaining("const seen = new Map();")
+        }),
+        expect.objectContaining({
+          id: "notebook_image",
+          type: "text",
+          customData: expect.objectContaining({
+            canvasItemId: "canvas_item_image",
+            canvasItemType: "image"
+          }),
+          text: expect.stringContaining("Failover sketch")
+        }),
+        expect.objectContaining({
+          id: "notebook_diagram",
+          type: "text",
+          customData: expect.objectContaining({
+            canvasItemId: "canvas_item_diagram",
+            canvasItemType: "diagram"
+          }),
+          text: expect.stringContaining("Queue absorbs spikes")
+        })
+      ])
+    );
+  });
+
+  it("syncs metadata Canvas Item regions without rewriting them as Text Canvas Items", () => {
+    const linkCardElement: ExcalidrawTextElement = {
+      ...baseElement,
+      id: "notebook_link",
+      type: "text",
+      x: 48,
+      y: 64,
+      width: 320,
+      height: 120,
+      text: "Link Card\nhttps://example.com/two-sum",
+      originalText: "Link Card\nhttps://example.com/two-sum",
+      fontSize: 20,
+      fontFamily: 1,
+      textAlign: "left",
+      verticalAlign: "top",
+      containerId: null,
+      autoResize: true,
+      lineHeight: 1.25 as ExcalidrawTextElement["lineHeight"],
+      customData: {
+        canvasItemId: "canvas_item_link",
+        canvasItemType: "link-card"
+      }
+    };
+
+    expect(
+      notebookCanvasSnapshotFromExcalidraw("page_dsa", [linkCardElement])
+    ).toEqual({
+      textItems: [],
+      freehandDrawingItems: [],
+      regions: [
+        {
+          pageId: "page_dsa",
+          canvasItemId: "canvas_item_link",
+          bounds: { x: 48, y: 64, width: 320, height: 120 }
+        }
+      ]
+    });
   });
 });
 
