@@ -80,7 +80,7 @@ describe("App", () => {
 
     await screen.findByTestId("tldraw-page-canvas");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
 
     expect(
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
@@ -99,7 +99,7 @@ describe("App", () => {
     await renderApp();
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await screen.findByDisplayValue("Inbox");
     await user.clear(screen.getByDisplayValue("Inbox"));
     await user.type(screen.getByLabelText("Rename Inbox"), "Algorithms");
@@ -142,7 +142,7 @@ describe("App", () => {
     const view = render(<App store={failingStore} />);
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
@@ -194,7 +194,7 @@ describe("App", () => {
     render(<App store={conflictStore} />);
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
@@ -260,7 +260,7 @@ describe("App", () => {
     render(<App store={unavailableStore} />);
 
     await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
     await user.click(screen.getByRole("button", { name: "Add Section" }));
@@ -362,6 +362,8 @@ describe("App", () => {
     const user = userEvent.setup();
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxInput = await screen.findByDisplayValue("Inbox");
     const inboxRow = inboxInput.closest("li");
 
@@ -376,7 +378,6 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Page Type: unset")).toBeInTheDocument();
     expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
     expect(window.location.pathname).toMatch(
       /^\/sections\/section_inbox\/pages\/page_/
@@ -387,6 +388,8 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
     if (inboxRow === null) {
@@ -466,7 +469,8 @@ describe("App", () => {
 
     await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "invariant");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "invariant");
 
     const result = await screen.findByText(
       "Interview Prep Notebook / Inbox / Untitled Page"
@@ -515,7 +519,7 @@ describe("App", () => {
 
     const { store } = await renderApp(notebookWithText);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const untitledPageRow = (
       await screen.findByText("Untitled Page")
     ).closest("li");
@@ -525,11 +529,12 @@ describe("App", () => {
     }
 
     await user.click(within(untitledPageRow).getByRole("button", { name: "Open Page" }));
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
       await screen.findByLabelText("Tags for Binary search invariant"),
       "arrays, invariant"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "arrays");
 
     expect(await screen.findByText("Matched Tags: #arrays")).toBeInTheDocument();
@@ -552,6 +557,8 @@ describe("App", () => {
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
     if (inboxRow === null) {
@@ -561,6 +568,7 @@ describe("App", () => {
     await user.click(
       within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
       await screen.findByLabelText("Link Card URL"),
       "https://example.com/system-design"
@@ -577,7 +585,9 @@ describe("App", () => {
         name: "https://example.com/system-design"
       })
     ).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "cache");
+
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "cache");
 
     expect(await screen.findByText("Link Card")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #cache")).toBeInTheDocument();
@@ -600,6 +610,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByRole("link", {
         name: "https://example.com/system-design"
@@ -612,6 +624,8 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
     if (inboxRow === null) {
@@ -621,6 +635,7 @@ describe("App", () => {
     await user.click(
       within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.type(
       await screen.findByLabelText("Code Block content"),
       "const complement = target - nums[i];"
@@ -638,13 +653,14 @@ describe("App", () => {
       screen.getByLabelText("Edit Code Block"),
       "return seen.get(complement);"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "two sum");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "two sum");
 
     expect(await screen.findByText("Code Block")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #two sum")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
     ).toBeInTheDocument();
@@ -665,6 +681,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByDisplayValue("return seen.get(complement);")
     ).toBeInTheDocument();
@@ -677,6 +695,8 @@ describe("App", () => {
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxRow = (
       await screen.findByDisplayValue("Inbox")
     ).closest("li");
@@ -688,6 +708,7 @@ describe("App", () => {
     await user.click(
       within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.upload(
       await screen.findByLabelText("Image Item file"),
       new File(["diagram"], "failover.png", { type: "image/png" })
@@ -713,13 +734,14 @@ describe("App", () => {
       screen.getByLabelText("Edit Image Item caption"),
       "Updated failover sketch"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "availability");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "availability");
 
     expect(await screen.findByText("Image Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #availability")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Image Item Canvas Region")
     ).toBeInTheDocument();
@@ -742,6 +764,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByRole("img", { name: "Updated failover sketch" })
     ).toBeInTheDocument();
@@ -752,6 +776,8 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const inboxRow = (
       await screen.findByDisplayValue("Inbox")
     ).closest("li");
@@ -763,6 +789,7 @@ describe("App", () => {
     await user.click(
       within(inboxRow).getByRole("button", { name: "New Blank Page" })
     );
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     await user.selectOptions(
       await screen.findByLabelText("Diagram Item type"),
       "arrow"
@@ -783,13 +810,14 @@ describe("App", () => {
       screen.getByLabelText("Edit Diagram Item label"),
       "Queue absorbs write spikes"
     );
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "backpressure");
 
     expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #backpressure")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
     ).toBeInTheDocument();
@@ -811,6 +839,8 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByDisplayValue("Queue absorbs write spikes")
     ).toBeInTheDocument();
@@ -856,7 +886,7 @@ describe("App", () => {
 
     await renderApp(notebookWithDrawing);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     const untitledPageRow = (await screen.findByText("Untitled Page")).closest("li");
 
     if (untitledPageRow === null) {
@@ -865,10 +895,9 @@ describe("App", () => {
 
     await user.click(within(untitledPageRow).getByRole("button", { name: "Open Page" }));
 
-    expect(await screen.findByRole("button", { name: "Use Draw Tool" })).toBeInTheDocument();
-    expect(screen.getByText(/not OCR or searchable handwriting/i)).toBeInTheDocument();
+    await screen.findByTestId("tldraw-page-canvas");
 
-    await user.click(screen.getByRole("button", { name: "Back to Notebook" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
     await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
 
     expect(await screen.findByText("No Search Results found in this Notebook.")).toBeInTheDocument();
@@ -894,9 +923,11 @@ describe("App", () => {
 
     await renderApp(notebookWithCodeBlock);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "bfs");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "bfs");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
     ).toBeInTheDocument();
@@ -923,9 +954,11 @@ describe("App", () => {
 
     await renderApp(notebookWithImage);
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "backpressure");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "backpressure");
     await user.click(await screen.findByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Image Item Canvas Region")
     ).toBeInTheDocument();
@@ -995,7 +1028,8 @@ describe("App", () => {
 
     await renderApp();
     await screen.findByRole("heading", { name: "Interview Prep Notebook" });
-    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    await user.click(await screen.findByRole("button", { name: "Export Notebook Backup" }));
 
     const exportJson = await screen.findByLabelText("Notebook Export JSON");
     const exportJsonValue = (exportJson as HTMLTextAreaElement).value;
@@ -1013,12 +1047,13 @@ describe("App", () => {
     expect(
       await screen.findByText(/Search uses a freshly rebuilt Local Index/)
     ).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Search Canvas Items/), "eviction");
+    await user.type(await screen.findByLabelText(/Search Canvas Items/), "eviction");
 
     expect(await screen.findByText("Diagram Item")).toBeInTheDocument();
     expect(screen.getByText("Matched Tags: #eviction")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Result" }));
 
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
     expect(
       await screen.findByLabelText("Highlighted Diagram Item Canvas Region")
     ).toBeInTheDocument();
@@ -1029,7 +1064,8 @@ describe("App", () => {
     const user = userEvent.setup();
 
     await screen.findByTestId("tldraw-page-canvas");
-    const inboxRow = screen.getByDisplayValue("Inbox").closest("li");
+    await user.click(screen.getByRole("button", { name: "Notebook Management" }));
+    const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
     if (inboxRow === null) {
       throw new Error("Expected Inbox Section row.");

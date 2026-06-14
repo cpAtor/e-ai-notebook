@@ -566,8 +566,222 @@ textarea:focus {
   box-shadow: 0 0 0 6px rgba(245, 164, 0, 0.16);
 }
 
+/* ── Drawing Screen ─────────────────────────────────────────────────── */
+
+.drawing-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f5f1e8;
+  z-index: 1;
+}
+
+.drawing-screen__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid rgba(23, 32, 51, 0.1);
+  background: rgba(255, 253, 247, 0.96);
+  backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+}
+
+.drawing-screen__notebook-btn {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.drawing-screen__items-btn {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  background: #e8e4f5;
+  color: #2d1a7a;
+}
+
+.drawing-screen__items-btn:hover {
+  background: #d5ceee;
+}
+
+.drawing-screen__notebook-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4d5871;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14ch;
+}
+
+.drawing-screen__page-crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  overflow: hidden;
+  flex: 1;
+}
+
+.drawing-screen__section-name {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #6952c7;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.drawing-screen__page-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawing-screen__page-type {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #4d5871;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.drawing-screen__privacy-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 0.4rem 0.7rem;
+}
+
+.drawing-screen__save-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #275719;
+}
+
+.drawing-screen__save-status--failed {
+  color: #743126;
+}
+
+.drawing-screen__save-status button {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.drawing-screen__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.drawing-screen__canvas-area {
+  position: relative;
+  flex: 0 0 calc(100dvh - 3rem);
+  overflow: hidden;
+}
+
+.drawing-screen__canvas-area .tldraw-canvas {
+  height: 100%;
+  min-height: unset;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.drawing-screen__panels {
+  flex: 0 0 auto;
+  padding: 1rem;
+  background: #f5f1e8;
+}
+
+.drawing-screen__error {
+  padding: 2rem;
+}
+
+.drawing-screen__error h2 {
+  margin: 0 0 1rem;
+}
+
+/* ── Empty Canvas Prompts ───────────────────────────────────────────── */
+
+.empty-canvas-prompts {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.empty-canvas-prompts__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.75rem 2rem;
+  background: rgba(255, 253, 247, 0.88);
+  backdrop-filter: blur(12px);
+  border-radius: 1.75rem;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  box-shadow: 0 8px 40px rgba(23, 32, 51, 0.1);
+  pointer-events: auto;
+  max-width: 440px;
+  text-align: center;
+}
+
+.empty-canvas-prompts__hint {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #4d5871;
+}
+
+.empty-canvas-prompts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+}
+
+.empty-canvas-prompt-btn {
+  padding: 0.6rem 1.1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.empty-canvas-prompt-btn--secondary {
+  background: #e6f6d9;
+  color: #275719;
+}
+
+.empty-canvas-prompt-btn--secondary:hover {
+  background: #d4eebc;
+}
+
+.empty-canvas-prompt-hint {
+  width: 100%;
+  font-size: 0.8rem;
+  color: #4d5871;
+  font-weight: 600;
+}
+
 @media (max-width: 720px) {
-  .app-shell {
     width: min(100% - 1rem, 1080px);
     padding: 1rem 0;
   }
@@ -608,9 +822,5 @@ textarea:focus {
     height: 62vh;
     min-height: 360px;
     margin: 0.75rem 0;
-  }
-
-  .canvas-tool-switcher {
-    display: grid;
   }
 }

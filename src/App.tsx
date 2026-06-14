@@ -51,6 +51,7 @@ import {
   removeSection,
   Section,
   SectionId,
+  STARTER_DEFAULT_PAGE_ID,
   type TextCanvasItem,
   updateCodeBlockCanvasItem,
   updateDiagramCanvasItem,
@@ -847,6 +848,30 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     );
   }
 
+  if (route.kind === "page" && activePage !== null) {
+    return (
+      <DrawingScreen
+        activePage={activePage}
+        notebook={notebook}
+        highlightedCanvasItemId={highlightedCanvasItemId}
+        saveStatus={saveStatus}
+        onNotebookOpen={handleNotebookOpen}
+        onSaveRetry={handleSaveRetry}
+        onConflictReload={handleConflictReload}
+        onCodeBlockAdd={handleCodeBlockAdd}
+        onCodeBlockChange={handleCodeBlockChange}
+        onDiagramItemAdd={handleDiagramItemAdd}
+        onDiagramItemChange={handleDiagramItemChange}
+        onImageItemAdd={handleImageItemAdd}
+        onImageItemMetadataChange={handleImageItemMetadataChange}
+        onLinkCardAdd={handleLinkCardAdd}
+        onLinkCardTagsChange={handleLinkCardTagsChange}
+        onPageTextCanvasChange={handlePageTextCanvasChange}
+        onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
+      />
+    );
+  }
+
   return (
     <main className="app-shell" aria-labelledby="notebook-title">
       <section className="hero">
@@ -967,30 +992,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
             {notebook.pages.length} {notebook.pages.length === 1 ? "Page" : "Pages"}
           </p>
         </div>
-
-        {activePage === null ? (
-          <NotebookPages
-            notebook={notebook}
-            onPageOpen={handlePageOpen}
-          />
-        ) : (
-          <ActivePageView
-            activePage={activePage}
-            notebook={notebook}
-            highlightedCanvasItemId={highlightedCanvasItemId}
-            onNotebookOpen={handleNotebookOpen}
-            onCodeBlockAdd={handleCodeBlockAdd}
-            onCodeBlockChange={handleCodeBlockChange}
-            onDiagramItemAdd={handleDiagramItemAdd}
-            onDiagramItemChange={handleDiagramItemChange}
-            onImageItemAdd={handleImageItemAdd}
-            onImageItemMetadataChange={handleImageItemMetadataChange}
-            onLinkCardAdd={handleLinkCardAdd}
-            onLinkCardTagsChange={handleLinkCardTagsChange}
-            onPageTextCanvasChange={handlePageTextCanvasChange}
-            onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
-          />
-        )}
+        <NotebookPages
+          notebook={notebook}
+          onPageOpen={handlePageOpen}
+        />
       </section>
     </main>
   );
@@ -1245,70 +1250,34 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
   );
 };
 
-interface ActivePageViewProps {
+interface DrawingScreenProps {
   readonly activePage: ActivePage;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly saveStatus: SaveStatus;
   readonly onNotebookOpen: () => void;
-  readonly onCodeBlockAdd: (
-    pageId: PageId,
-    code: string,
-    tagDraft: string
-  ) => void;
-  readonly onCodeBlockChange: (
-    canvasItemId: CanvasItemId,
-    code: string,
-    tagDraft: string
-  ) => void;
-  readonly onDiagramItemAdd: (
-    pageId: PageId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onDiagramItemChange: (
-    canvasItemId: CanvasItemId,
-    kind: DiagramItemKind,
-    label: string,
-    tagDraft: string
-  ) => void;
-  readonly onLinkCardAdd: (
-    pageId: PageId,
-    url: string,
-    note: string,
-    tagDraft: string
-  ) => void;
-  readonly onLinkCardTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
-  readonly onImageItemAdd: (
-    pageId: PageId,
-    dataUrl: string,
-    mediaType: string,
-    caption: string,
-    tagDraft: string
-  ) => void;
-  readonly onImageItemMetadataChange: (
-    canvasItemId: CanvasItemId,
-    caption: string,
-    tagDraft: string
-  ) => void;
-  readonly onPageTextCanvasChange: (
-    pageId: PageId,
-    snapshot: PageTldrawCanvasSnapshot
-  ) => void;
-  readonly onTextCanvasItemTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
-  ) => void;
+  readonly onSaveRetry: () => void;
+  readonly onConflictReload: () => void;
+  readonly onCodeBlockAdd: (pageId: PageId, code: string, tagDraft: string) => void;
+  readonly onCodeBlockChange: (canvasItemId: CanvasItemId, code: string, tagDraft: string) => void;
+  readonly onDiagramItemAdd: (pageId: PageId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onDiagramItemChange: (canvasItemId: CanvasItemId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onImageItemAdd: (pageId: PageId, dataUrl: string, mediaType: string, caption: string, tagDraft: string) => void;
+  readonly onImageItemMetadataChange: (canvasItemId: CanvasItemId, caption: string, tagDraft: string) => void;
+  readonly onLinkCardAdd: (pageId: PageId, url: string, note: string, tagDraft: string) => void;
+  readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onPageTextCanvasChange: (pageId: PageId, snapshot: PageTldrawCanvasSnapshot) => void;
+  readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
 }
 
-const ActivePageView = ({
+const DrawingScreen = ({
   activePage,
   notebook,
   highlightedCanvasItemId,
+  saveStatus,
   onNotebookOpen,
+  onSaveRetry,
+  onConflictReload,
   onCodeBlockAdd,
   onCodeBlockChange,
   onDiagramItemAdd,
@@ -1319,99 +1288,251 @@ const ActivePageView = ({
   onLinkCardTagsChange,
   onPageTextCanvasChange,
   onTextCanvasItemTagsChange
-}: ActivePageViewProps) => {
+}: DrawingScreenProps) => {
+  const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
+  const [showPanels, setShowPanels] = useState(false);
+
   if (activePage.kind === "invalid-section") {
     return (
-      <div className="page-canvas" role="alert">
-        <h3>Section not found</h3>
-        <p>
-          This Page URL points to a Section that is not in this Notebook:
-          {" "}{activePage.sectionId}
-        </p>
-        <button type="button" onClick={onNotebookOpen}>
-          Back to Notebook
-        </button>
-      </div>
+      <main className="drawing-screen" role="alert" aria-labelledby="ds-error-title">
+        <header className="drawing-screen__header">
+          <button type="button" className="drawing-screen__notebook-btn" onClick={onNotebookOpen}>
+            Notebook Management
+          </button>
+        </header>
+        <div className="drawing-screen__error">
+          <h2 id="ds-error-title">Section not found</h2>
+          <p>
+            This Page URL points to a Section that is not in this Notebook:
+            {" "}{activePage.sectionId}
+          </p>
+        </div>
+      </main>
     );
   }
 
   if (activePage.kind === "invalid-page") {
     return (
-      <div className="page-canvas" role="alert">
-        <h3>Page not found</h3>
-        <p>
-          {activePage.section.title} does not contain this Page:
-          {" "}{activePage.pageId}
-        </p>
-        <button type="button" onClick={onNotebookOpen}>
-          Back to Notebook
-        </button>
-      </div>
+      <main className="drawing-screen" role="alert" aria-labelledby="ds-error-title">
+        <header className="drawing-screen__header">
+          <button type="button" className="drawing-screen__notebook-btn" onClick={onNotebookOpen}>
+            Notebook Management
+          </button>
+        </header>
+        <div className="drawing-screen__error">
+          <h2 id="ds-error-title">Page not found</h2>
+          <p>
+            {activePage.section.title} does not contain this Page:
+            {" "}{activePage.pageId}
+          </p>
+        </div>
+      </main>
     );
   }
 
+  const { page, section } = activePage;
+  const pageCanvasItems = notebook.canvasItems.filter((item) => item.pageId === page.id);
+  const showEmptyPrompts = page.id === STARTER_DEFAULT_PAGE_ID && pageCanvasItems.length === 0;
+  const pageTextItems = notebook.canvasItems.filter(
+    (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
+  );
+
   return (
-    <article className="page-canvas" aria-labelledby="active-page-title">
-      <p className="eyebrow">{activePage.section.title}</p>
-      <h3 id="active-page-title">{activePage.page.title}</h3>
-      <p>Page Type: unset</p>
-      <p>
-        Use tldraw text and draw tools for rough interview-prep work. Text Canvas
-        Items are searchable; Freehand Drawings autosave and reload for navigation
-        without OCR or handwriting search.
-      </p>
-      <PageLinkCards
-        page={activePage.page}
-        notebook={notebook}
-        onLinkCardAdd={onLinkCardAdd}
-        onLinkCardTagsChange={onLinkCardTagsChange}
-      />
-      <PageImageItems
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onImageItemAdd={onImageItemAdd}
-        onImageItemMetadataChange={onImageItemMetadataChange}
-      />
-      <PageDiagramItems
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onDiagramItemAdd={onDiagramItemAdd}
-        onDiagramItemChange={onDiagramItemChange}
-      />
-      <PageCodeBlocks
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onCodeBlockAdd={onCodeBlockAdd}
-        onCodeBlockChange={onCodeBlockChange}
-      />
-      <PageTextCanvas
-        page={activePage.page}
-        notebook={notebook}
-        highlightedCanvasItemId={highlightedCanvasItemId}
-        onPageTextCanvasChange={onPageTextCanvasChange}
-        onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
-      />
-      <button type="button" onClick={onNotebookOpen}>
-        Back to Notebook
-      </button>
-    </article>
+    <main className="drawing-screen" aria-labelledby="ds-notebook-title">
+      <header className="drawing-screen__header">
+        <button
+          type="button"
+          className="drawing-screen__notebook-btn"
+          onClick={onNotebookOpen}
+        >
+          Notebook Management
+        </button>
+        <h1 id="ds-notebook-title" className="drawing-screen__notebook-title">
+          {notebook.title}
+        </h1>
+        <div className="drawing-screen__page-crumb">
+          <span className="drawing-screen__section-name">{section.title}</span>
+          <h2 className="drawing-screen__page-title">{page.title}</h2>
+        </div>
+        <button
+          type="button"
+          className="drawing-screen__items-btn"
+          onClick={() => setShowPanels((prev) => !prev)}
+          aria-expanded={showPanels}
+        >
+          Canvas Items
+        </button>
+        <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
+          Private Notebook
+        </span>
+        {saveStatus.kind === "saving" || saveStatus.kind === "failed" || saveStatus.kind === "conflict" ? (
+          <DrawingScreenSaveStatus
+            status={saveStatus}
+            onRetry={onSaveRetry}
+            onConflictReload={onConflictReload}
+          />
+        ) : null}
+      </header>
+      <div className="drawing-screen__body">
+        <div className="drawing-screen__canvas-area">
+          {showEmptyPrompts ? (
+            <EmptyCanvasPrompts
+              onTextTool={() => currentEditor?.setCurrentTool("text")}
+              onDrawTool={() => currentEditor?.setCurrentTool("draw")}
+              onSearchNotebook={onNotebookOpen}
+            />
+          ) : null}
+          <PageTextCanvas
+            page={page}
+            notebook={notebook}
+            highlightedCanvasItemId={highlightedCanvasItemId}
+            onEditorReady={setCurrentEditor}
+            onPageTextCanvasChange={onPageTextCanvasChange}
+          />
+        </div>
+        {showPanels ? (
+          <div className="drawing-screen__panels">
+            <TextCanvasItemTags
+              pageTextItems={pageTextItems}
+              onTagsChange={onTextCanvasItemTagsChange}
+            />
+            <PageLinkCards
+              page={page}
+              notebook={notebook}
+              onLinkCardAdd={onLinkCardAdd}
+              onLinkCardTagsChange={onLinkCardTagsChange}
+            />
+            <PageImageItems
+              page={page}
+              notebook={notebook}
+              highlightedCanvasItemId={highlightedCanvasItemId}
+              onImageItemAdd={onImageItemAdd}
+              onImageItemMetadataChange={onImageItemMetadataChange}
+            />
+            <PageDiagramItems
+              page={page}
+              notebook={notebook}
+              highlightedCanvasItemId={highlightedCanvasItemId}
+              onDiagramItemAdd={onDiagramItemAdd}
+              onDiagramItemChange={onDiagramItemChange}
+            />
+            <PageCodeBlocks
+              page={page}
+              notebook={notebook}
+              highlightedCanvasItemId={highlightedCanvasItemId}
+              onCodeBlockAdd={onCodeBlockAdd}
+              onCodeBlockChange={onCodeBlockChange}
+            />
+          </div>
+        ) : null}
+      </div>
+    </main>
   );
 };
+
+interface DrawingScreenSaveStatusProps {
+  readonly status: SaveStatus;
+  readonly onRetry: () => void;
+  readonly onConflictReload: () => void;
+}
+
+const DrawingScreenSaveStatus = ({
+  status,
+  onRetry,
+  onConflictReload
+}: DrawingScreenSaveStatusProps) => {
+  if (status.kind === "saving") {
+    return (
+      <span className="drawing-screen__save-status" aria-live="polite">
+        Saving…
+      </span>
+    );
+  }
+
+  if (status.kind === "failed") {
+    return (
+      <span
+        className="drawing-screen__save-status drawing-screen__save-status--failed"
+        role="alert"
+      >
+        Autosave failed
+        <button type="button" onClick={onRetry}>Retry Save</button>
+      </span>
+    );
+  }
+
+  if (status.kind === "conflict") {
+    return (
+      <span
+        className="drawing-screen__save-status drawing-screen__save-status--failed"
+        role="alert"
+      >
+        Another tab changed this Notebook
+        <button type="button" onClick={onConflictReload}>Reload Stored Notebook</button>
+      </span>
+    );
+  }
+
+  return null;
+};
+
+interface EmptyCanvasPromptsProps {
+  readonly onTextTool: () => void;
+  readonly onDrawTool: () => void;
+  readonly onSearchNotebook: () => void;
+}
+
+const EmptyCanvasPrompts = ({
+  onTextTool,
+  onDrawTool,
+  onSearchNotebook
+}: EmptyCanvasPromptsProps) => (
+  <div className="empty-canvas-prompts" aria-label="Empty Canvas Prompts">
+    <div className="empty-canvas-prompts__card">
+      <p className="empty-canvas-prompts__hint">
+        Start capturing rough interview-prep work
+      </p>
+      <div className="empty-canvas-prompts__actions">
+        <button
+          type="button"
+          className="empty-canvas-prompt-btn"
+          onClick={onTextTool}
+        >
+          Type a note
+        </button>
+        <button
+          type="button"
+          className="empty-canvas-prompt-btn"
+          onClick={onDrawTool}
+        >
+          Sketch
+        </button>
+        <span className="empty-canvas-prompt-hint">
+          Paste a screenshot or image, or use Canvas Items to add an Image Item
+        </span>
+        <span className="empty-canvas-prompt-hint">
+          Add a Link Card via Canvas Items in the header
+        </span>
+        <button
+          type="button"
+          className="empty-canvas-prompt-btn empty-canvas-prompt-btn--secondary"
+          onClick={onSearchNotebook}
+        >
+          Search Notebook
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 interface PageTextCanvasProps {
   readonly page: Page;
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onEditorReady?: (editor: TldrawEditor | null) => void;
   readonly onPageTextCanvasChange: (
     pageId: PageId,
     snapshot: PageTldrawCanvasSnapshot
-  ) => void;
-  readonly onTextCanvasItemTagsChange: (
-    canvasItemId: CanvasItemId,
-    tagDraft: string
   ) => void;
 }
 
@@ -1419,8 +1540,8 @@ const PageTextCanvas = ({
   page,
   notebook,
   highlightedCanvasItemId,
-  onPageTextCanvasChange,
-  onTextCanvasItemTagsChange
+  onEditorReady,
+  onPageTextCanvasChange
 }: PageTextCanvasProps) => {
   const saveTimeoutRef = useRef<number | undefined>(undefined);
   const editorRef = useRef<TldrawEditor | null>(null);
@@ -1461,6 +1582,7 @@ const PageTextCanvas = ({
         initialFreehandDrawingItems
       );
       editorRef.current = editor;
+      onEditorReady?.(editor);
 
       if (drafts.length > 0 || drawingDrafts.length > 0) {
         editor.createShapes([...drafts, ...drawingDrafts]);
@@ -1508,6 +1630,7 @@ const PageTextCanvas = ({
       return () => {
         window.clearTimeout(saveTimeoutRef.current);
         editorRef.current = null;
+        onEditorReady?.(null);
         unsubscribe();
       };
     },
@@ -1515,54 +1638,38 @@ const PageTextCanvas = ({
       initialFreehandDrawingItems,
       initialRegions,
       initialTextItems,
+      onEditorReady,
       onPageTextCanvasChange,
       page.id
     ]
   );
 
   return (
-    <>
-      <div className="canvas-tool-switcher" aria-label="Canvas tool shortcuts">
-        <button type="button" onClick={() => editorRef.current?.setCurrentTool("text")}>
-          Use Text Tool
-        </button>
-        <button type="button" onClick={() => editorRef.current?.setCurrentTool("draw")}>
-          Use Draw Tool
-        </button>
-        <span>
-          Freehand Drawing stays local and is not OCR or searchable handwriting.
-        </span>
-      </div>
-      <div
-        className="tldraw-canvas"
-        data-testid="tldraw-page-canvas"
-        aria-label={`${page.title} tldraw text canvas`}
-      >
-        {highlightedRegion !== null ? (
-          <div
-            className="canvas-region-highlight"
-            role="status"
-            aria-label="Highlighted Canvas Region"
-            style={{
-              height: `${highlightedRegion.bounds.height}px`,
-              left: `${highlightedRegion.bounds.x}px`,
-              top: `${highlightedRegion.bounds.y}px`,
-              width: `${highlightedRegion.bounds.width}px`
-            }}
-          />
-        ) : null}
-        <Tldraw
-          assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
-          autoFocus
-          initialState="text"
-          onMount={handleMount}
+    <div
+      className="tldraw-canvas"
+      data-testid="tldraw-page-canvas"
+      aria-label={`${page.title} tldraw text canvas`}
+    >
+      {highlightedRegion !== null ? (
+        <div
+          className="canvas-region-highlight"
+          role="status"
+          aria-label="Highlighted Canvas Region"
+          style={{
+            height: `${highlightedRegion.bounds.height}px`,
+            left: `${highlightedRegion.bounds.x}px`,
+            top: `${highlightedRegion.bounds.y}px`,
+            width: `${highlightedRegion.bounds.width}px`
+          }}
         />
-      </div>
-      <TextCanvasItemTags
-        pageTextItems={initialTextItems}
-        onTagsChange={onTextCanvasItemTagsChange}
+      ) : null}
+      <Tldraw
+        assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
+        autoFocus
+        initialState="text"
+        onMount={handleMount}
       />
-    </>
+    </div>
   );
 };
 
