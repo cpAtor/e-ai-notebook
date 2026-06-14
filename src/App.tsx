@@ -949,6 +949,10 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         onLinkCardTagsChange={handleLinkCardTagsChange}
         onPageTextCanvasChange={handlePageTextCanvasChange}
         onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
+        searchQuery={searchQuery}
+        searchResults={searchResults}
+        onSearchQueryChange={setSearchQuery}
+        onSearchResultOpen={handleSearchResultOpen}
       />
     );
   }
@@ -1357,6 +1361,10 @@ interface DrawingScreenProps {
   readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
   readonly onPageTextCanvasChange: (pageId: PageId, snapshot: PageTldrawCanvasSnapshot) => void;
   readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly searchQuery: string;
+  readonly searchResults: readonly SearchResult[];
+  readonly onSearchQueryChange: (query: string) => void;
+  readonly onSearchResultOpen: (result: SearchResult) => void;
 }
 
 const DrawingScreen = ({
@@ -1384,7 +1392,11 @@ const DrawingScreen = ({
   onLinkCardAdd,
   onLinkCardTagsChange,
   onPageTextCanvasChange,
-  onTextCanvasItemTagsChange
+  onTextCanvasItemTagsChange,
+  searchQuery,
+  searchResults,
+  onSearchQueryChange,
+  onSearchResultOpen
 }: DrawingScreenProps) => {
   const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
   const [showPanels, setShowPanels] = useState(false);
@@ -1396,6 +1408,7 @@ const DrawingScreen = ({
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [showSlowSaveToast, setShowSlowSaveToast] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
     if (saveStatus.kind !== "saving") {
@@ -1441,6 +1454,7 @@ const DrawingScreen = ({
         setActiveModal(null);
         setIsCommandPaletteOpen(false);
         setIsDrawerOpen(false);
+        setIsSearchOpen(false);
       }
     };
 
@@ -1453,6 +1467,7 @@ const DrawingScreen = ({
     setShowHamburgerMenu(false);
     setIsCommandPaletteOpen(false);
     setIsDrawerOpen(false);
+    setIsSearchOpen(false);
     setCommandQuery("");
     setActiveCommandIndex(0);
     setActiveModal(modal);
@@ -1515,9 +1530,9 @@ const DrawingScreen = ({
     {
       id: "search-notebook",
       label: "Search Notebook",
-      description: "Open Notebook Management",
-      keywords: "search notebook management dashboard",
-      run: onNotebookOpen
+      description: "Find Canvas Items by keyword",
+      keywords: "search notebook find keyword canvas items",
+      run: () => setIsSearchOpen(true)
     },
     {
       id: "rename-sections",
@@ -1660,6 +1675,13 @@ const DrawingScreen = ({
         >
           Notebook Management
         </button>
+        <button
+          type="button"
+          className="drawing-screen__search-btn"
+          onClick={() => setIsSearchOpen(true)}
+        >
+          Search Notebook
+        </button>
         <h1 id="ds-notebook-title" className="drawing-screen__notebook-title">
           {notebook.title}
         </h1>
@@ -1685,7 +1707,7 @@ const DrawingScreen = ({
             <EmptyCanvasPrompts
               onTextTool={() => currentEditor?.setCurrentTool("text")}
               onDrawTool={() => currentEditor?.setCurrentTool("draw")}
-              onSearchNotebook={onNotebookOpen}
+                onSearchNotebook={() => setIsSearchOpen(true)}
             />
           ) : null}
           <PageTextCanvas
@@ -1793,6 +1815,15 @@ const DrawingScreen = ({
         backupStatus={backupStatus}
         onSaveRetry={onSaveRetry}
         onConflictReload={onConflictReload}
+      />
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        query={searchQuery}
+        results={searchResults}
+        notebook={notebook}
+        onQueryChange={onSearchQueryChange}
+        onResultOpen={onSearchResultOpen}
+        onClose={() => { setIsSearchOpen(false); onSearchQueryChange(""); }}
       />
     </main>
   );
@@ -1984,6 +2015,154 @@ const CanvasToastArea = ({
   return (
     <div className="canvas-toast-area" aria-label="Notebook notifications">
       {toasts}
+    </div>
+  );
+};
+
+interface SearchOverlayProps {
+  readonly isOpen: boolean;
+  readonly query: string;
+  readonly results: readonly SearchResult[];
+  readonly notebook: Notebook;
+  readonly onQueryChange: (query: string) => void;
+  readonly onResultOpen: (result: SearchResult) => void;
+  readonly onClose: () => void;
+}
+
+const SearchOverlay = ({
+  isOpen,
+  query,
+  results,
+  notebook,
+  onQueryChange,
+  onResultOpen,
+  onClose
+}: SearchOverlayProps) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  const groupedResults = useMemo(() => {
+    interface GroupEntry {
+      readonly pageId: PageId;
+      readonly pageTitle: string;
+      readonly sectionTitle: string;
+      readonly results: SearchResult[];
+    }
+    const groups = new Map<PageId, GroupEntry>();
+
+    for (const result of results) {
+      if (!groups.has(result.pageId)) {
+        const page = notebook.pages.find((p) => p.id === result.pageId);
+        const section = notebook.sections.find((s) => s.id === result.sectionId);
+        groups.set(result.pageId, {
+          pageId: result.pageId,
+          pageTitle: page?.title ?? "Unknown Page",
+          sectionTitle: section?.title ?? "Unknown Section",
+          results: []
+        });
+      }
+      groups.get(result.pageId)?.results.push(result);
+    }
+
+    return Array.from(groups.values());
+  }, [results, notebook]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const handleResultOpen = (result: SearchResult) => {
+    onQueryChange("");
+    onClose();
+    onResultOpen(result);
+  };
+
+  return (
+    <div className="search-overlay-backdrop" onClick={onClose}>
+      <div
+        className="search-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search Notebook"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="search-overlay__header">
+          <input
+            ref={inputRef}
+            className="search-overlay__input"
+            aria-label="Search Notebook"
+            placeholder="Search Canvas Items, Tags, Page titles…"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onQueryChange("");
+                onClose();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="search-overlay__close"
+            aria-label="Close Search"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="search-overlay__body" aria-label="Search Results">
+          {query.trim().length === 0 ? (
+            <p className="search-overlay__hint">
+              Type to search Canvas Items, Tags, and Page titles.
+            </p>
+          ) : groupedResults.length === 0 ? (
+            <p className="search-overlay__empty">
+              No Search Results found in this Notebook.
+            </p>
+          ) : (
+            groupedResults.map((group) => (
+              <div key={group.pageId} className="search-overlay__page-group">
+                <p className="search-overlay__page-header">
+                  <span className="search-overlay__section-name">
+                    {group.sectionTitle}
+                  </span>
+                  {" › "}
+                  <span className="search-overlay__page-name">
+                    {group.pageTitle}
+                  </span>
+                </p>
+                {group.results.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    className="search-overlay__result"
+                    aria-label="Open Result"
+                    onClick={() => handleResultOpen(result)}
+                  >
+                    <span className="search-overlay__result-label">
+                      {result.sourceLabel}
+                    </span>
+                    {result.matchedTags.length > 0 ? (
+                      <span className="search-overlay__result-tags">
+                        {result.matchedTags.map((tag) => `#${tag}`).join(", ")}
+                      </span>
+                    ) : null}
+                    <span className="search-overlay__result-snippet">
+                      {result.snippet}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 };

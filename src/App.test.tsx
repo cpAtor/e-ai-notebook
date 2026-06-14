@@ -138,7 +138,7 @@ describe("App", () => {
     await user.type(commandInput, "Search Notebook");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByDisplayValue("Inbox")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Search Notebook" })).toBeInTheDocument();
   });
 
   it("renames, adds, and removes Sections", async () => {
@@ -1129,5 +1129,49 @@ describe("App", () => {
 
     await screen.findByRole("heading", { name: "Untitled Page" });
     expect(window.location.pathname).toBe(lastOpenedPath);
+  });
+
+  it("opens search overlay from Drawing Screen, finds seeded Code Block, and highlights Canvas Region", async () => {
+    const user = userEvent.setup();
+    const starterNotebook = createStarterNotebook();
+    const inbox = starterNotebook.sections[0];
+
+    if (inbox === undefined) {
+      throw new Error("Expected seeded Inbox Section.");
+    }
+
+    const notebookWithCodeBlock = addCodeBlockCanvasItem(
+      addBlankPage(starterNotebook, inbox.id, "page_search_overlay_test"),
+      "page_search_overlay_test",
+      "canvas_item_search_code",
+      "function dfs(graph, start) { return graph[start]; }",
+      ["graphs", "dfs"]
+    );
+
+    await renderApp(notebookWithCodeBlock);
+    await screen.findByTestId("tldraw-page-canvas");
+
+    const searchBtns = screen.getAllByRole("button", { name: "Search Notebook" });
+    const headerSearchBtn = searchBtns[0];
+    if (headerSearchBtn === undefined) throw new Error("Expected Search Notebook header button.");
+    await user.click(headerSearchBtn);
+
+    const searchDialog = await screen.findByRole("dialog", { name: "Search Notebook" });
+    expect(searchDialog).toBeInTheDocument();
+
+    const searchInput = within(searchDialog).getByRole("textbox", { name: "Search Notebook" });
+    await user.type(searchInput, "dfs");
+
+    expect(await within(searchDialog).findByText("Code Block")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("#dfs")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Inbox")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open Result" }));
+
+    expect(screen.queryByRole("textbox", { name: "Search Notebook" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Canvas Items" }));
+    expect(
+      await screen.findByLabelText("Highlighted Code Block Canvas Region")
+    ).toBeInTheDocument();
   });
 });
