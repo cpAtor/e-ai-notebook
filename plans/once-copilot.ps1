@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$ralphCommits = git log --grep="RALPH" -n 10 --format="%H%n%ad%n%B---" --date=short 2>$null
+$ralphCommits = git log --grep="RALPH" -n 10 --format="%h %ad %s" --date=short 2>$null
 if ([string]::IsNullOrWhiteSpace($ralphCommits)) {
     $ralphCommits = "No RALPH commits found"
 }
