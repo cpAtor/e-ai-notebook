@@ -3,6 +3,7 @@ import {
   ClipboardEvent,
   ComponentProps,
   FormEvent,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -71,7 +72,41 @@ import {
 } from "./persistence/notebookStorage";
 
 const DEFAULT_NEW_SECTION_TITLE = "New Section";
+const THEME_STORAGE_KEY = "notebook_theme";
 const defaultNotebookStore = createNotebookStore();
+
+type Theme = "system" | "light" | "dark";
+
+const getSystemTheme = (): Exclude<Theme, "system"> => {
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  return "dark";
+};
+
+const getStoredTheme = (): Theme => {
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+
+    if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
+      return storedTheme;
+    }
+  } catch {
+    // Ignore storage errors while choosing a default theme.
+  }
+
+  return "system";
+};
+
+const applyThemeToDocument = (theme: Theme) => {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.dataset.theme = theme === "system" ? getSystemTheme() : theme;
+};
+
 const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
   fonts: {
     tldraw_draw: "data:font/woff2;base64,",
@@ -184,6 +219,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
   const [notebookExportJson, setNotebookExportJson] = useState("");
+  const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const saveAttemptRef = useRef(0);
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
@@ -208,11 +244,15 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
           setRecoveryState(null);
           setSaveStatus({ kind: "saved" });
 
-          if (parsePageRoute(window.location.pathname).kind === "notebook") {
+          if (
+            parsePageRoute(window.location.pathname).kind === "notebook" &&
+            getRootRoutePreference() !== "notebook"
+          ) {
             const targetPage = resolveOpeningPage(storedNotebook);
             if (targetPage !== null) {
               const path = pagePath(targetPage.sectionId, targetPage.pageId);
               window.history.pushState({}, "", path);
+              setRootRoutePreference("page");
               setRoute({
                 kind: "page",
                 sectionId: targetPage.sectionId,
@@ -271,6 +311,33 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
 
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    applyThemeToDocument(theme);
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore storage errors while persisting theme preference.
+    }
+
+    if (theme !== "system" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => applyThemeToDocument("system");
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+
+    return () => mediaQuery.removeListener(handleChange);
+  }, [theme]);
 
   const activePage = useMemo(() => {
     if (notebook === null || route.kind === "notebook") {
@@ -449,6 +516,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
         window.history.pushState({}, "", "/");
+        setRootRoutePreference("notebook");
         setRoute({ kind: "notebook" });
         setRecoveryState(null);
         setStatus({
@@ -518,6 +586,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         setSearchQuery("");
         setHighlightedCanvasItemId(null);
         window.history.pushState({}, "", "/");
+        setRootRoutePreference("notebook");
         setRoute({ kind: "notebook" });
         setBackupStatus({
           kind: "success",
@@ -572,6 +641,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     }));
 
     if (title.trim().length > 0) {
+      setRootRoutePreference("notebook");
       updateNotebook((currentNotebook) =>
         renameSection(currentNotebook, sectionId, title)
       );
@@ -579,6 +649,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   };
 
   const handleSectionRemove = (sectionId: SectionId) => {
+    setRootRoutePreference("notebook");
     updateNotebook((currentNotebook) => removeSection(currentNotebook, sectionId));
     setSectionTitleDrafts((currentDrafts) => {
       const remainingDrafts = { ...currentDrafts };
@@ -591,6 +662,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     event.preventDefault();
 
     const title = newSectionTitle.trim() || DEFAULT_NEW_SECTION_TITLE;
+    setRootRoutePreference("notebook");
     updateNotebook((currentNotebook) =>
       addSection(currentNotebook, createSectionId(), title)
     );
@@ -800,6 +872,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     const path = pagePath(sectionId, pageId);
     window.history.pushState({}, "", path);
     setLastOpenedPage(sectionId, pageId);
+    setRootRoutePreference("page");
     setRoute({ kind: "page", sectionId, pageId });
   };
 
@@ -855,7 +928,15 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         notebook={notebook}
         highlightedCanvasItemId={highlightedCanvasItemId}
         saveStatus={saveStatus}
+        theme={theme}
+        onThemeChange={setTheme}
         onNotebookOpen={handleNotebookOpen}
+        onPageOpen={handlePageOpen}
+        onPageCreate={handlePageCreate}
+        onNotebookExport={handleNotebookExport}
+        onNotebookImport={handleNotebookImport}
+        notebookExportJson={notebookExportJson}
+        backupStatus={backupStatus}
         onSaveRetry={handleSaveRetry}
         onConflictReload={handleConflictReload}
         onCodeBlockAdd={handleCodeBlockAdd}
@@ -1255,7 +1336,15 @@ interface DrawingScreenProps {
   readonly notebook: Notebook;
   readonly highlightedCanvasItemId: CanvasItemId | null;
   readonly saveStatus: SaveStatus;
+  readonly theme: Theme;
+  readonly onThemeChange: (theme: Theme) => void;
   readonly onNotebookOpen: () => void;
+  readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
+  readonly onPageCreate: (sectionId: SectionId) => void;
+  readonly onNotebookExport: () => void;
+  readonly onNotebookImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly notebookExportJson: string;
+  readonly backupStatus: BackupStatus;
   readonly onSaveRetry: () => void;
   readonly onConflictReload: () => void;
   readonly onCodeBlockAdd: (pageId: PageId, code: string, tagDraft: string) => void;
@@ -1275,7 +1364,15 @@ const DrawingScreen = ({
   notebook,
   highlightedCanvasItemId,
   saveStatus,
+  theme,
+  onThemeChange,
   onNotebookOpen,
+  onPageOpen,
+  onPageCreate,
+  onNotebookExport,
+  onNotebookImport,
+  notebookExportJson,
+  backupStatus,
   onSaveRetry,
   onConflictReload,
   onCodeBlockAdd,
@@ -1291,6 +1388,62 @@ const DrawingScreen = ({
 }: DrawingScreenProps) => {
   const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
   const [showPanels, setShowPanels] = useState(false);
+  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+  const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showHamburgerMenu) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setShowHamburgerMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [showHamburgerMenu]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setShowHamburgerMenu(false);
+        setActiveModal(null);
+        setIsCommandPaletteOpen(true);
+        setCommandQuery("");
+        setActiveCommandIndex(0);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setShowHamburgerMenu(false);
+        setActiveModal(null);
+        setIsCommandPaletteOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const openCanvasModal = (modal: CanvasModalKind) => {
+    setShowHamburgerMenu(false);
+    setIsCommandPaletteOpen(false);
+    setCommandQuery("");
+    setActiveCommandIndex(0);
+    setActiveModal(modal);
+  };
+
+  const closeCanvasModal = () => setActiveModal(null);
 
   if (activePage.kind === "invalid-section") {
     return (
@@ -1336,10 +1489,139 @@ const DrawingScreen = ({
   const pageTextItems = notebook.canvasItems.filter(
     (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
   );
+  const commandActions: readonly CommandAction[] = [
+    {
+      id: "search-notebook",
+      label: "Search Notebook",
+      description: "Open Notebook Management",
+      keywords: "search notebook management dashboard",
+      run: onNotebookOpen
+    },
+    {
+      id: "rename-sections",
+      label: "Rename Sections",
+      description: "Use Notebook Management",
+      keywords: "rename section notebook management",
+      run: onNotebookOpen
+    },
+    ...notebook.pages.map((notebookPage) => {
+      const notebookSection = getSection(notebook, notebookPage.sectionId);
+
+      return {
+        id: `page-${notebookPage.id}`,
+        label: `Switch Page: ${notebookPage.title}`,
+        description: notebookSection?.title ?? "Unknown Section",
+        keywords: `switch page ${notebookPage.title} ${notebookSection?.title ?? ""}`,
+        run: () => onPageOpen(notebookPage.sectionId, notebookPage.id)
+      };
+    }),
+    ...notebook.sections.map((notebookSection) => ({
+      id: `new-page-${notebookSection.id}`,
+      label: `New Page in ${notebookSection.title}`,
+      description: "Create and open a blank page",
+      keywords: `new page create ${notebookSection.title}`,
+      run: () => onPageCreate(notebookSection.id)
+    })),
+    {
+      id: "export-notebook",
+      label: "Export Notebook Backup",
+      description: "Open export modal",
+      keywords: "export backup notebook",
+      run: () => openCanvasModal("export")
+    },
+    {
+      id: "import-notebook",
+      label: "Import Notebook Export",
+      description: "Open import modal",
+      keywords: "import backup notebook",
+      run: () => openCanvasModal("import")
+    },
+    {
+      id: "keyboard-shortcuts",
+      label: "Keyboard Shortcuts",
+      description: "Open shortcuts modal",
+      keywords: "keyboard shortcuts help",
+      run: () => openCanvasModal("shortcuts")
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      description: "Open settings modal",
+      keywords: "settings preferences",
+      run: () => openCanvasModal("settings")
+    }
+  ];
 
   return (
     <main className="drawing-screen" aria-labelledby="ds-notebook-title">
       <header className="drawing-screen__header">
+        <div className="drawing-screen__menu-wrap" ref={menuRef}>
+          <button
+            type="button"
+            className="hamburger-btn"
+            aria-label="Open notebook menu"
+            aria-expanded={showHamburgerMenu}
+            aria-haspopup="menu"
+            onClick={() => setShowHamburgerMenu((current) => !current)}
+          >
+            ≡
+          </button>
+          {showHamburgerMenu ? (
+            <div className="hamburger-menu" role="menu" aria-label="Notebook actions">
+              <div className="hamburger-menu__section">
+                <span className="hamburger-menu__label">Theme</span>
+                <div className="theme-picker" role="group" aria-label="Theme picker">
+                  {(["system", "light", "dark"] as const).map((themeOption) => (
+                    <button
+                      key={themeOption}
+                      type="button"
+                      className={
+                        theme === themeOption
+                          ? "theme-picker__option theme-picker__option--active"
+                          : "theme-picker__option"
+                      }
+                      aria-pressed={theme === themeOption}
+                      onClick={() => {
+                        onThemeChange(themeOption);
+                        setShowHamburgerMenu(false);
+                      }}
+                    >
+                      {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("shortcuts")}
+              >
+                Keyboard Shortcuts
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("settings")}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("export")}
+              >
+                Export Notebook Backup
+              </button>
+              <button
+                type="button"
+                className="hamburger-menu__item"
+                onClick={() => openCanvasModal("import")}
+              >
+                Import Notebook Export
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           className="drawing-screen__notebook-btn"
@@ -1426,6 +1708,47 @@ const DrawingScreen = ({
           </div>
         ) : null}
       </div>
+      <CommandPalette
+        actions={commandActions}
+        activeIndex={activeCommandIndex}
+        isOpen={isCommandPaletteOpen}
+        query={commandQuery}
+        onActiveIndexChange={setActiveCommandIndex}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onQueryChange={setCommandQuery}
+      />
+      <CanvasModal
+        isOpen={activeModal === "shortcuts"}
+        title="Keyboard Shortcuts"
+        onClose={closeCanvasModal}
+      >
+        <ShortcutsModalContent />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "settings"}
+        title="Settings"
+        onClose={closeCanvasModal}
+      >
+        <SettingsModalContent />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "export"}
+        title="Export Notebook Backup"
+        onClose={closeCanvasModal}
+      >
+        <NotebookExportModalContent
+          exportJson={notebookExportJson}
+          status={backupStatus}
+          onExport={onNotebookExport}
+        />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "import"}
+        title="Import Notebook Export"
+        onClose={closeCanvasModal}
+      >
+        <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
+      </CanvasModal>
     </main>
   );
 };
@@ -2475,10 +2798,304 @@ const LocalSearch = ({
   </section>
 );
 
+interface CommandAction {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly keywords: string;
+  readonly run: () => void;
+}
+
+type CanvasModalKind = "shortcuts" | "settings" | "export" | "import";
+
+interface CommandPaletteProps {
+  readonly actions: readonly CommandAction[];
+  readonly activeIndex: number;
+  readonly isOpen: boolean;
+  readonly query: string;
+  readonly onActiveIndexChange: (index: number) => void;
+  readonly onClose: () => void;
+  readonly onQueryChange: (query: string) => void;
+}
+
+const CommandPalette = ({
+  actions,
+  activeIndex,
+  isOpen,
+  query,
+  onActiveIndexChange,
+  onClose,
+  onQueryChange
+}: CommandPaletteProps) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const filteredActions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (normalizedQuery.length === 0) {
+      return actions;
+    }
+
+    return actions.filter((action) =>
+      [action.label, action.description, action.keywords]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery)
+    );
+  }, [actions, query]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    inputRef.current?.focus();
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (filteredActions.length === 0) {
+      onActiveIndexChange(0);
+      return;
+    }
+
+    if (activeIndex >= filteredActions.length) {
+      onActiveIndexChange(0);
+    }
+  }, [activeIndex, filteredActions, onActiveIndexChange]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const runAction = (action: CommandAction) => {
+    action.run();
+    onClose();
+    onQueryChange("");
+    onActiveIndexChange(0);
+  };
+
+  return (
+    <div className="command-palette-overlay" onClick={onClose}>
+      <div
+        className="command-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command Palette"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          className="command-palette__input"
+          aria-label="Command Palette"
+          placeholder="Type a command"
+          value={query}
+          onChange={(event) => {
+            onQueryChange(event.target.value);
+            onActiveIndexChange(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              onActiveIndexChange(
+                filteredActions.length === 0 ? 0 : (activeIndex + 1) % filteredActions.length
+              );
+              return;
+            }
+
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              onActiveIndexChange(
+                filteredActions.length === 0
+                  ? 0
+                  : (activeIndex - 1 + filteredActions.length) % filteredActions.length
+              );
+              return;
+            }
+
+            if (event.key === "Enter") {
+              event.preventDefault();
+              const action = filteredActions[activeIndex] ?? filteredActions[0];
+
+              if (action !== undefined) {
+                runAction(action);
+              }
+              return;
+            }
+
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onClose();
+            }
+          }}
+        />
+        <div className="command-palette__list" role="listbox" aria-label="Command results">
+          {filteredActions.length === 0 ? (
+            <div className="command-palette__empty">No matching actions.</div>
+          ) : (
+            filteredActions.map((action, index) => (
+              <button
+                key={action.id}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                className={
+                  index === activeIndex
+                    ? "command-palette__item command-palette__item--active"
+                    : "command-palette__item"
+                }
+                onMouseEnter={() => onActiveIndexChange(index)}
+                onClick={() => runAction(action)}
+              >
+                <span>{action.label}</span>
+                <small>{action.description}</small>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface CanvasModalProps {
+  readonly children: ReactNode;
+  readonly isOpen: boolean;
+  readonly onClose: () => void;
+  readonly title: string;
+}
+
+const CanvasModal = ({ children, isOpen, onClose, title }: CanvasModalProps) => {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="canvas-modal-overlay" onClick={onClose}>
+      <div
+        className="canvas-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="canvas-modal__header">
+          <h3>{title}</h3>
+          <button
+            type="button"
+            className="canvas-modal__close"
+            aria-label={`Close ${title}`}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="canvas-modal__body">{children}</div>
+      </div>
+    </div>
+  );
+};
+
+const ShortcutsModalContent = () => (
+  <div className="canvas-modal__content">
+    <table className="shortcuts-table">
+      <tbody>
+        <tr>
+          <th scope="row">Cmd/Ctrl+K</th>
+          <td>Open Command Palette</td>
+        </tr>
+        <tr>
+          <th scope="row">Canvas shortcuts</th>
+          <td>tldraw keeps its native canvas shortcuts available inside the editor.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+);
+
+const SettingsModalContent = () => (
+  <p className="canvas-modal__message">
+    No additional settings yet. Use the hamburger menu for theme and management actions.
+  </p>
+);
+
+interface NotebookExportModalContentProps {
+  readonly exportJson: string;
+  readonly status: BackupStatus;
+  readonly onExport: () => void;
+}
+
+const NotebookExportModalContent = ({
+  exportJson,
+  status,
+  onExport
+}: NotebookExportModalContentProps) => (
+  <div className="canvas-modal__content notebook-backup">
+    <p>
+      Export preserves Sections, Pages, Canvas Items, Tags, and Canvas Regions while
+      excluding rebuildable Local Index data.
+    </p>
+    <button type="button" onClick={onExport}>
+      Export Notebook Backup
+    </button>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
+    {exportJson.length > 0 ? (
+      <label className="notebook-backup__json" htmlFor="canvas-modal-export-json">
+        Notebook Export JSON
+        <textarea id="canvas-modal-export-json" readOnly value={exportJson} />
+      </label>
+    ) : null}
+  </div>
+);
+
+interface NotebookImportModalContentProps {
+  readonly onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly status: BackupStatus;
+}
+
+const NotebookImportModalContent = ({
+  onImport,
+  status
+}: NotebookImportModalContentProps) => (
+  <div className="canvas-modal__content notebook-backup">
+    <label htmlFor="canvas-modal-import" className="notebook-backup__json">
+      Import Notebook Export
+      <input
+        id="canvas-modal-import"
+        type="file"
+        accept="application/json,.json"
+        onChange={onImport}
+      />
+    </label>
+    {status.kind !== "idle" ? (
+      <p
+        className={
+          status.kind === "failed"
+            ? "notebook-backup__status notebook-backup__status--failed"
+            : "notebook-backup__status"
+        }
+        role={status.kind === "failed" ? "alert" : "status"}
+      >
+        {status.message}
+      </p>
+    ) : null}
+  </div>
+);
+
 const pagePath = (sectionId: SectionId, pageId: PageId) =>
   `/sections/${encodeURIComponent(sectionId)}/pages/${encodeURIComponent(pageId)}`;
 
 const LAST_OPENED_PAGE_STORAGE_KEY = "notebook_last_opened_page";
+const ROOT_ROUTE_PREFERENCE_STORAGE_KEY = "notebook_root_route_preference";
 
 const getLastOpenedPage = (): { sectionId: SectionId; pageId: PageId } | null => {
   try {
@@ -2503,6 +3120,25 @@ const setLastOpenedPage = (sectionId: SectionId, pageId: PageId): void => {
     );
   } catch {
     // Ignore storage errors; last-opened page is best-effort
+  }
+};
+
+const getRootRoutePreference = (): "page" | "notebook" | null => {
+  try {
+    const storedPreference = localStorage.getItem(ROOT_ROUTE_PREFERENCE_STORAGE_KEY);
+    return storedPreference === "page" || storedPreference === "notebook"
+      ? storedPreference
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const setRootRoutePreference = (preference: "page" | "notebook"): void => {
+  try {
+    localStorage.setItem(ROOT_ROUTE_PREFERENCE_STORAGE_KEY, preference);
+  } catch {
+    // Ignore storage errors; root-route preference is best-effort.
   }
 };
 

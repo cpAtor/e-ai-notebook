@@ -94,6 +94,53 @@ describe("App", () => {
     expect(screen.getByDisplayValue("Inbox")).toBeInTheDocument();
   });
 
+  it("opens hamburger management actions and persists theme selection", async () => {
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toHaveTextContent(
+      /No additional settings yet/i
+    );
+
+    await user.click(screen.getByRole("button", { name: "Close Settings" }));
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Light" }));
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("notebook_theme")).toBe("light");
+
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Export Notebook Backup" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export Notebook Backup" })).toBeInTheDocument();
+  });
+
+  it("opens the command palette and runs notebook actions", async () => {
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.keyboard("{Control>}k{/Control}");
+    await screen.findByRole("dialog", { name: "Command Palette" });
+    await user.type(screen.getByRole("textbox", { name: "Command Palette" }), "New Page in Inbox");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("heading", { name: "Untitled Page" })).toBeInTheDocument();
+
+    await user.keyboard("{Control>}k{/Control}");
+    const commandInput = await screen.findByRole("textbox", { name: "Command Palette" });
+    await user.type(commandInput, "Search Notebook");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByDisplayValue("Inbox")).toBeInTheDocument();
+  });
+
   it("renames, adds, and removes Sections", async () => {
     const user = userEvent.setup();
     await renderApp();
