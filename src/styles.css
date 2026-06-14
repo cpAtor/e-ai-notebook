@@ -1668,3 +1668,54 @@ html[data-theme="dark"] .drawing-screen__search-btn:hover {
   background: #3b4668;
 }
 
+.assistant-bubble {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 200;
+  padding: 10px 18px;
+  border-radius: 24px;
+  background: #6952c7;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.assistant-bubble:hover {
+  background: #5541a8;
+}
+
+html[data-theme="dark"] .assistant-bubble {
+  background: #7c68d4;
+}
+
+html[data-theme="dark"] .assistant-bubble:hover {
+  background: #6952c7;
+}
+
+.settings-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-modal__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-modal__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+html[data-theme="dark"] .settings-modal__hint {
+  color: #9ca3af;
+}

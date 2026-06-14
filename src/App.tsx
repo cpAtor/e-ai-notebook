@@ -73,7 +73,16 @@ import {
 
 const DEFAULT_NEW_SECTION_TITLE = "New Section";
 const THEME_STORAGE_KEY = "notebook_theme";
+const AI_ENABLED_STORAGE_KEY = "notebook_ai_enabled";
 const defaultNotebookStore = createNotebookStore();
+
+const getStoredAiEnabled = (): boolean => {
+  try {
+    return localStorage.getItem(AI_ENABLED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
 
 type Theme = "system" | "light" | "dark";
 
@@ -220,6 +229,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: "idle" });
   const [notebookExportJson, setNotebookExportJson] = useState("");
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  const [aiEnabled, setAiEnabled] = useState<boolean>(getStoredAiEnabled);
   const saveAttemptRef = useRef(0);
   const [route, setRoute] = useState<PageRoute>(() =>
     parsePageRoute(window.location.pathname)
@@ -876,6 +886,15 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     setRoute({ kind: "page", sectionId, pageId });
   };
 
+  const handleAiEnabledChange = (enabled: boolean) => {
+    try {
+      localStorage.setItem(AI_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+    } catch {
+      // Ignore storage errors while saving AI preference.
+    }
+    setAiEnabled(enabled);
+  };
+
   if (recoveryState !== null) {
     return (
       <RecoveryScreen
@@ -930,6 +949,8 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         saveStatus={saveStatus}
         theme={theme}
         onThemeChange={setTheme}
+        aiEnabled={aiEnabled}
+        onAiEnabledChange={handleAiEnabledChange}
         onNotebookOpen={handleNotebookOpen}
         onPageOpen={handlePageOpen}
         onPageCreate={handlePageCreate}
@@ -1342,6 +1363,8 @@ interface DrawingScreenProps {
   readonly saveStatus: SaveStatus;
   readonly theme: Theme;
   readonly onThemeChange: (theme: Theme) => void;
+  readonly aiEnabled: boolean;
+  readonly onAiEnabledChange: (enabled: boolean) => void;
   readonly onNotebookOpen: () => void;
   readonly onPageOpen: (sectionId: SectionId, pageId: PageId) => void;
   readonly onPageCreate: (sectionId: SectionId) => void;
@@ -1374,6 +1397,8 @@ const DrawingScreen = ({
   saveStatus,
   theme,
   onThemeChange,
+  aiEnabled,
+  onAiEnabledChange,
   onNotebookOpen,
   onPageOpen,
   onPageCreate,
@@ -1752,7 +1777,7 @@ const DrawingScreen = ({
         title="Settings"
         onClose={closeCanvasModal}
       >
-        <SettingsModalContent />
+        <SettingsModalContent aiEnabled={aiEnabled} onAiEnabledChange={onAiEnabledChange} />
       </CanvasModal>
       <CanvasModal
         isOpen={activeModal === "export"}
@@ -1810,6 +1835,7 @@ const DrawingScreen = ({
         onResultOpen={onSearchResultOpen}
         onClose={() => { setIsSearchOpen(false); onSearchQueryChange(""); }}
       />
+      {aiEnabled ? <AssistantBubble /> : null}
     </main>
   );
 };
@@ -1928,6 +1954,12 @@ const NotebookDrawer = ({
       ) : null}
     </aside>
   </>
+);
+
+const AssistantBubble = () => (
+  <button type="button" className="assistant-bubble" aria-label="Open Notebook Assistant">
+    Ask Notebook Assistant
+  </button>
 );
 
 interface CanvasToastAreaProps {
@@ -3433,10 +3465,25 @@ const ShortcutsModalContent = () => (
   </div>
 );
 
-const SettingsModalContent = () => (
-  <p className="canvas-modal__message">
-    No additional settings yet. Use the hamburger menu for theme and management actions.
-  </p>
+interface SettingsModalContentProps {
+  readonly aiEnabled: boolean;
+  readonly onAiEnabledChange: (enabled: boolean) => void;
+}
+
+const SettingsModalContent = ({ aiEnabled, onAiEnabledChange }: SettingsModalContentProps) => (
+  <div className="canvas-modal__content settings-modal">
+    <label className="settings-modal__toggle">
+      <input
+        type="checkbox"
+        checked={aiEnabled}
+        onChange={(event) => onAiEnabledChange(event.target.checked)}
+      />
+      Enable AI features
+    </label>
+    <p className="settings-modal__hint">
+      When enabled, the Notebook Assistant and AI actions become available. AI is disabled by default and makes no network calls until you enable it.
+    </p>
+  </div>
 );
 
 interface NotebookExportModalContentProps {

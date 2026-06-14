@@ -102,8 +102,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
-    expect(await screen.findByRole("dialog", { name: "Settings" })).toHaveTextContent(
-      /No additional settings yet/i
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toContainElement(
+      screen.getByRole("checkbox", { name: /enable ai features/i })
     );
 
     await user.click(screen.getByRole("button", { name: "Close Settings" }));
@@ -1173,5 +1173,55 @@ describe("App", () => {
     expect(
       await screen.findByLabelText("Highlighted Code Block Canvas Region")
     ).toBeInTheDocument();
+  });
+
+  it("does not show the Assistant Bubble when AI is disabled by default", async () => {
+    await renderApp();
+
+    await screen.findByTestId("tldraw-page-canvas");
+
+    expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBeNull();
+  });
+
+  it("shows the Assistant Bubble after enabling AI in Settings and persists the preference", async () => {
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
+    const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
+
+    expect(aiToggle).not.toBeChecked();
+    await user.click(aiToggle);
+    expect(aiToggle).toBeChecked();
+
+    expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBe("true");
+  });
+
+  it("hides the Assistant Bubble after disabling AI in Settings", async () => {
+    localStorage.setItem("notebook_ai_enabled", "true");
+    await renderApp();
+    const user = userEvent.setup();
+
+    await screen.findByTestId("tldraw-page-canvas");
+    expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open notebook menu" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
+    const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
+
+    expect(aiToggle).toBeChecked();
+    await user.click(aiToggle);
+    expect(aiToggle).not.toBeChecked();
+
+    expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("notebook_ai_enabled")).toBe("false");
   });
 });
