@@ -604,7 +604,6 @@ textarea:focus {
 }
 
 .canvas-hud__left,
-.canvas-hud__center,
 .canvas-hud__right {
   pointer-events: auto;
   display: flex;
@@ -618,10 +617,20 @@ textarea:focus {
   box-shadow: 0 2px 12px rgba(23, 32, 51, 0.1);
 }
 
+/* Page crumb is informational only — lighter pill so it doesn't compete with interactive HUD controls */
 .canvas-hud__center {
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   flex: 1;
   justify-content: center;
-  pointer-events: none;
+  background: rgba(255, 253, 247, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(23, 32, 51, 0.05);
+  box-shadow: none;
 }
 
 .canvas-hud__right {
@@ -912,6 +921,7 @@ html[data-theme="dark"] .link-card-list li,
 html[data-theme="dark"] .image-paste-target,
 html[data-theme="dark"] .command-palette,
 html[data-theme="dark"] .canvas-modal,
+html[data-theme="dark"] .search-overlay,
 html[data-theme="dark"] .hamburger-menu {
   border-color: rgba(232, 234, 240, 0.14);
   background: #23293d;
@@ -934,14 +944,17 @@ html[data-theme="dark"] .command-palette,
 html[data-theme="dark"] .hamburger-menu {
   border-color: rgba(232, 234, 240, 0.12);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
-}
-
-html[data-theme="dark"] .canvas-hud__left,
-html[data-theme="dark"] .canvas-hud__center,
+}html[data-theme="dark"] .canvas-hud__left,
 html[data-theme="dark"] .canvas-hud__right {
   background: rgba(35, 41, 61, 0.92);
   border-color: rgba(232, 234, 240, 0.12);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme="dark"] .canvas-hud__center {
+  background: rgba(35, 41, 61, 0.6);
+  border-color: rgba(232, 234, 240, 0.06);
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .hero p:not(.eyebrow),
@@ -1088,24 +1101,36 @@ html[data-theme="dark"] .link-card-list a {
   color: #ffffff;
 }
 
-.command-palette-overlay,
-.canvas-modal-overlay {
+.command-palette-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: rgba(12, 16, 26, 0.5);
+  background: rgba(12, 16, 26, 0.4);
+  backdrop-filter: blur(4px);
   padding: 6vh 1rem 1rem;
+}
+
+.canvas-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 16, 26, 0.4);
+  backdrop-filter: blur(4px);
+  padding: 1.5rem;
 }
 
 .command-palette {
   width: min(680px, 100%);
   border: 1px solid rgba(23, 32, 51, 0.12);
   border-radius: 1.25rem;
-  background: #fffdf7;
-  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.22);
+  background: rgba(255, 253, 247, 0.98);
+  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.26), 0 0 0 1px rgba(23, 32, 51, 0.06);
   padding: 1rem;
 }
 
@@ -1150,8 +1175,8 @@ html[data-theme="dark"] .link-card-list a {
   width: min(720px, 100%);
   border: 1px solid rgba(23, 32, 51, 0.12);
   border-radius: 1.5rem;
-  background: #fffdf7;
-  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.22);
+  background: rgba(255, 253, 247, 0.98);
+  box-shadow: 0 24px 70px rgba(23, 32, 51, 0.26), 0 0 0 1px rgba(23, 32, 51, 0.06);
   padding: 1rem;
 }
 
@@ -1482,7 +1507,8 @@ html[data-theme="dark"] .canvas-toast--error .canvas-toast__action:hover {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: rgba(12, 16, 26, 0.5);
+  background: rgba(12, 16, 26, 0.4);
+  backdrop-filter: blur(4px);
   padding: 6vh 1rem 1rem;
 }
 
@@ -1490,8 +1516,8 @@ html[data-theme="dark"] .canvas-toast--error .canvas-toast__action:hover {
   width: min(720px, 100%);
   border: 1px solid rgba(23, 32, 51, 0.12);
   border-radius: 1.25rem;
-  background: #fffdf7;
-  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.22);
+  background: rgba(255, 253, 247, 0.98);
+  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.26), 0 0 0 1px rgba(23, 32, 51, 0.06);
   padding: 1rem;
   display: flex;
   flex-direction: column;
