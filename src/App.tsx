@@ -1421,15 +1421,31 @@ const DrawingScreen = ({
   onSearchResultOpen
 }: DrawingScreenProps) => {
   const effectiveTheme = getEffectiveTheme(theme);
-  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Single active-surface state machine: at most one major surface open at a time.
+  type ActiveSurface =
+    | null
+    | "menu"
+    | "drawer"
+    | "search"
+    | "command-palette"
+    | { readonly kind: "modal"; readonly modal: CanvasModalKind };
+  const [activeSurface, setActiveSurface] = useState<ActiveSurface>(null);
+
+  // Derived surface flags for readability.
+  const showHamburgerMenu = activeSurface === "menu";
+  const isDrawerOpen = activeSurface === "drawer";
+  const isCommandPaletteOpen = activeSurface === "command-palette";
+  const isSearchOpen = activeSurface === "search";
+  const activeModal =
+    activeSurface !== null && typeof activeSurface === "object"
+      ? activeSurface.modal
+      : null;
+
   const [commandQuery, setCommandQuery] = useState("");
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [showSlowSaveToast, setShowSlowSaveToast] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
     if (saveStatus.kind !== "saving") {
@@ -1449,7 +1465,7 @@ const DrawingScreen = ({
 
     const handlePointerDown = (event: MouseEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
-        setShowHamburgerMenu(false);
+        setActiveSurface(null);
       }
     };
 
@@ -1462,20 +1478,16 @@ const DrawingScreen = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setShowHamburgerMenu(false);
-        setActiveModal(null);
-        setIsCommandPaletteOpen(true);
         setCommandQuery("");
         setActiveCommandIndex(0);
+        setActiveSurface("command-palette");
         return;
       }
 
       if (event.key === "Escape") {
-        setShowHamburgerMenu(false);
-        setActiveModal(null);
-        setIsCommandPaletteOpen(false);
-        setIsDrawerOpen(false);
-        setIsSearchOpen(false);
+        setActiveSurface(null);
+        setCommandQuery("");
+        setActiveCommandIndex(0);
       }
     };
 
@@ -1485,16 +1497,12 @@ const DrawingScreen = ({
   }, []);
 
   const openCanvasModal = (modal: CanvasModalKind) => {
-    setShowHamburgerMenu(false);
-    setIsCommandPaletteOpen(false);
-    setIsDrawerOpen(false);
-    setIsSearchOpen(false);
     setCommandQuery("");
     setActiveCommandIndex(0);
-    setActiveModal(modal);
+    setActiveSurface({ kind: "modal", modal });
   };
 
-  const closeCanvasModal = () => setActiveModal(null);
+  const closeCanvasModal = () => setActiveSurface(null);
 
   if (activePage.kind === "invalid-section") {
     return (
@@ -1543,14 +1551,14 @@ const DrawingScreen = ({
       label: isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer",
       description: "Browse Sections and Pages",
       keywords: "drawer pages sections navigate browse",
-      run: () => setIsDrawerOpen((open) => !open)
+      run: () => setActiveSurface((s) => (s === "drawer" ? null : "drawer"))
     },
     {
       id: "search-notebook",
       label: "Search Notebook",
       description: "Find Canvas Items by keyword",
       keywords: "search notebook find keyword canvas items",
-      run: () => setIsSearchOpen(true)
+      run: () => setActiveSurface("search")
     },
     {
       id: "rename-sections",
@@ -1627,14 +1635,14 @@ const DrawingScreen = ({
           notebook={notebook}
           currentPageId={page.id}
           onPageOpen={(sectionId, pageId) => {
-            setIsDrawerOpen(false);
+            setActiveSurface(null);
             onPageOpen(sectionId, pageId);
           }}
           onPageCreate={(sectionId) => {
-            setIsDrawerOpen(false);
+            setActiveSurface(null);
             onPageCreate(sectionId);
           }}
-          onClose={() => setIsDrawerOpen(false)}
+          onClose={() => setActiveSurface(null)}
         />
       </div>
       <div className="canvas-hud" aria-label="Canvas controls">
@@ -1646,7 +1654,7 @@ const DrawingScreen = ({
               aria-label="Open notebook menu"
               aria-expanded={showHamburgerMenu}
               aria-haspopup="menu"
-              onClick={() => setShowHamburgerMenu((current) => !current)}
+              onClick={() => setActiveSurface(showHamburgerMenu ? null : "menu")}
             >
               ≡
             </button>
@@ -1667,7 +1675,7 @@ const DrawingScreen = ({
                         aria-pressed={theme === themeOption}
                         onClick={() => {
                           onThemeChange(themeOption);
-                          setShowHamburgerMenu(false);
+                          setActiveSurface(null);
                         }}
                       >
                         {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
@@ -1675,6 +1683,32 @@ const DrawingScreen = ({
                     ))}
                   </div>
                 </div>
+                <hr className="hamburger-menu__divider" />
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => setActiveSurface("search")}
+                >
+                  Search Notebook
+                </button>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => {
+                    setActiveSurface(null);
+                    onNotebookOpen();
+                  }}
+                >
+                  Notebook Management
+                </button>
+                <button
+                  type="button"
+                  className="hamburger-menu__item"
+                  onClick={() => openCanvasModal("inspector")}
+                >
+                  Canvas Items
+                </button>
+                <hr className="hamburger-menu__divider" />
                 <button
                   type="button"
                   className="hamburger-menu__item"
@@ -1703,50 +1737,25 @@ const DrawingScreen = ({
                 >
                   Import Notebook Export
                 </button>
+                <div className="hamburger-menu__privacy" aria-label="Notebook privacy mode">
+                  🔒 Private by Default
+                </div>
               </div>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="drawing-screen__drawer-btn"
-            aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
-            aria-expanded={isDrawerOpen}
-            onClick={() => setIsDrawerOpen((open) => !open)}
-          >
-            Pages
-          </button>
         </div>
         <div className="canvas-hud__center">
-          <div className="drawing-screen__page-crumb">
+          <h2 className="sr-only">{page.title}</h2>
+          <button
+            type="button"
+            className="canvas-hud__page-chip"
+            aria-label={isDrawerOpen ? "Close Notebook Drawer" : "Open Notebook Drawer"}
+            aria-expanded={isDrawerOpen}
+            onClick={() => setActiveSurface(isDrawerOpen ? null : "drawer")}
+          >
             <span className="drawing-screen__section-name">{section.title}</span>
-            <h2 className="drawing-screen__page-title">{page.title}</h2>
-          </div>
-        </div>
-        <div className="canvas-hud__right">
-          <button
-            type="button"
-            className="drawing-screen__search-btn"
-            onClick={() => setIsSearchOpen(true)}
-          >
-            Search Notebook
+            <span className="drawing-screen__page-title">{page.title}</span>
           </button>
-          <button
-            type="button"
-            className="drawing-screen__notebook-btn"
-            onClick={onNotebookOpen}
-          >
-            Notebook Management
-          </button>
-          <button
-            type="button"
-            className="drawing-screen__items-btn"
-            onClick={() => openCanvasModal("inspector")}
-          >
-            Canvas Items
-          </button>
-          <span className="privacy-badge drawing-screen__privacy-badge" aria-label="Notebook privacy mode">
-            Private Notebook
-          </span>
         </div>
       </div>
       <CommandPalette
@@ -1755,7 +1764,7 @@ const DrawingScreen = ({
         isOpen={isCommandPaletteOpen}
         query={commandQuery}
         onActiveIndexChange={setActiveCommandIndex}
-        onClose={() => setIsCommandPaletteOpen(false)}
+        onClose={() => { setActiveSurface(null); setCommandQuery(""); setActiveCommandIndex(0); }}
         onQueryChange={setCommandQuery}
       />
       <CanvasModal
@@ -1826,7 +1835,7 @@ const DrawingScreen = ({
         notebook={notebook}
         onQueryChange={onSearchQueryChange}
         onResultOpen={onSearchResultOpen}
-        onClose={() => { setIsSearchOpen(false); onSearchQueryChange(""); }}
+        onClose={() => { setActiveSurface(null); onSearchQueryChange(""); }}
       />
       {aiEnabled ? <AssistantBubble /> : null}
     </main>
@@ -3283,10 +3292,10 @@ const CommandPalette = ({
   }
 
   const runAction = (action: CommandAction) => {
-    action.run();
     onClose();
     onQueryChange("");
     onActiveIndexChange(0);
+    action.run();
   };
 
   return (

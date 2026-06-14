@@ -8,6 +8,27 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ── Layering scale ───────────────────────────────────────────────────── */
+  --z-canvas: 1;       /* Drawing Screen root */
+  --z-hud: 100;        /* Canvas HUD strip — above tldraw chrome */
+  --z-hud-popup: 105;  /* Hamburger dropdown — above HUD */
+  --z-drawer-bg: 110;  /* Drawer backdrop scrim */
+  --z-drawer: 115;     /* Notebook Drawer panel */
+  --z-overlay: 120;    /* Command Palette, Search overlay, Canvas Modals */
+  --z-toast: 300;      /* Canvas Toast area */
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 * {
@@ -574,7 +595,7 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   background: #f5f1e8;
-  z-index: 1;
+  z-index: var(--z-canvas);
 }
 
 .drawing-screen__sr-title {
@@ -595,7 +616,7 @@ textarea:focus {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 50;
+  z-index: var(--z-hud);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -616,28 +637,38 @@ textarea:focus {
   border: 1px solid rgba(23, 32, 51, 0.09);
   box-shadow: 0 2px 12px rgba(23, 32, 51, 0.1);
 }
-
-/* Page crumb is informational only — lighter pill so it doesn't compete with interactive HUD controls */
 .canvas-hud__center {
-  pointer-events: none;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex: 1;
   justify-content: center;
+}
+
+.canvas-hud__page-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   background: rgba(255, 253, 247, 0.6);
   backdrop-filter: blur(8px);
   border-radius: 0.9rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.75rem;
   border: 1px solid rgba(23, 32, 51, 0.05);
   box-shadow: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.canvas-hud__right {
-  margin-left: auto;
+.canvas-hud__page-chip:hover {
+  background: rgba(255, 253, 247, 0.85);
+  box-shadow: 0 1px 6px rgba(23, 32, 51, 0.1);
 }
 
-.drawing-screen__header {
+/* Page Chip: compact interactive pill — opens Notebook Drawer, shows Section/Page context */
+/* (styles live in .canvas-hud__page-chip above) */
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -744,7 +775,7 @@ textarea:focus {
   position: fixed;
   bottom: 1.25rem;
   right: 1.25rem;
-  z-index: 600;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -951,10 +982,23 @@ html[data-theme="dark"] .canvas-hud__right {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
-html[data-theme="dark"] .canvas-hud__center {
+html[data-theme="dark"] .canvas-hud__page-chip {
   background: rgba(35, 41, 61, 0.6);
   border-color: rgba(232, 234, 240, 0.06);
-  box-shadow: none;
+  color: #e8eaf0;
+}
+
+html[data-theme="dark"] .canvas-hud__page-chip:hover {
+  background: rgba(35, 41, 61, 0.85);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme="dark"] .hamburger-menu__divider {
+  border-top-color: rgba(232, 234, 240, 0.12);
+}
+
+html[data-theme="dark"] .hamburger-menu__privacy {
+  color: #c6cfde;
 }
 
 html[data-theme="dark"] .hero p:not(.eyebrow),
@@ -1042,7 +1086,7 @@ html[data-theme="dark"] .link-card-list a {
   position: absolute;
   top: calc(100% + 0.5rem);
   left: 0;
-  z-index: 40;
+  z-index: var(--z-hud-popup);
   display: grid;
   gap: 0.35rem;
   min-width: 250px;
@@ -1081,6 +1125,20 @@ html[data-theme="dark"] .link-card-list a {
   background: #dde3f1;
 }
 
+.hamburger-menu__divider {
+  border: none;
+  border-top: 1px solid rgba(23, 32, 51, 0.1);
+  margin: 0.15rem 0;
+}
+
+.hamburger-menu__privacy {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #4d5871;
+  padding: 0.4rem 0.6rem 0.15rem;
+  letter-spacing: 0.01em;
+}
+
 .theme-picker {
   display: flex;
   gap: 0.5rem;
@@ -1104,7 +1162,7 @@ html[data-theme="dark"] .link-card-list a {
 .command-palette-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1116,7 +1174,7 @@ html[data-theme="dark"] .link-card-list a {
 .canvas-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1252,7 +1310,7 @@ html[data-theme="dark"] .link-card-list a {
 .notebook-drawer-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 29;
+  z-index: var(--z-drawer-bg);
   background: rgba(12, 16, 26, 0.25);
 }
 
@@ -1261,7 +1319,7 @@ html[data-theme="dark"] .link-card-list a {
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 30;
+  z-index: var(--z-drawer);
   width: 280px;
   display: flex;
   flex-direction: column;
@@ -1503,7 +1561,7 @@ html[data-theme="dark"] .canvas-toast--error .canvas-toast__action:hover {
 .search-overlay-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1688,7 +1746,7 @@ html[data-theme="dark"] .drawing-screen__search-btn:hover {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 200;
+  z-index: var(--z-toast);
   padding: 10px 18px;
   border-radius: 24px;
   background: #6952c7;
