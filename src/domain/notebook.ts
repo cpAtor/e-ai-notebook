@@ -232,7 +232,7 @@ export const replacePageCanvasItems = (
   nextRegions: readonly CanvasRegion[]
 ): Notebook => {
   const pageExists = notebook.pages.some((page) => page.id === pageId);
-  const previousPageTldrawItemIds = new Set(
+  const previousPageNativeCanvasItemIds = new Set(
     notebook.canvasItems
       .filter(
         (canvasItem) =>
@@ -274,7 +274,7 @@ export const replacePageCanvasItems = (
       ...notebook.canvasRegions.filter(
         (region) =>
           region.pageId !== pageId ||
-          !previousPageTldrawItemIds.has(region.canvasItemId)
+          !previousPageNativeCanvasItemIds.has(region.canvasItemId)
       ),
       ...nextRegions
     ]

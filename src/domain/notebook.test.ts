@@ -208,7 +208,7 @@ describe("Notebook Sections", () => {
     });
   });
 
-  it("keeps Link Cards when replacing tldraw text Canvas Items", () => {
+  it("keeps Link Cards when replacing native text Canvas Items", () => {
     const starterNotebook = createStarterNotebook();
     const dsa = starterNotebook.sections[0];
 

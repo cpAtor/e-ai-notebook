@@ -1,7 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCanApplySelectionAction } from "tldraw";
 import { App } from "./App";
 import {
   addSection,
@@ -36,7 +35,6 @@ describe("App", () => {
     databaseName = `app-test-${databaseSequence}`;
     window.history.replaceState({}, "", "/");
     localStorage.clear();
-    vi.mocked(useCanApplySelectionAction).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -65,7 +63,7 @@ describe("App", () => {
   // Helper: open the Canvas Lens menu and click an action inside it.
   const openMenuAndClick = async (user: ReturnType<typeof userEvent.setup>, itemName: string) => {
     await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: itemName }));
+    await user.click(screen.getByRole("menuitem", { name: itemName }));
   };
 
   it("opens directly into the Default Page Drawing Screen for a fresh user", async () => {
@@ -74,12 +72,10 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Interview Prep Notebook" })
     ).toBeInTheDocument();
-    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("notebook-page-canvas")).toBeInTheDocument();
     expect(window.location.pathname).toMatch(
       /^\/sections\/section_inbox\/pages\/page_default$/
     );
-    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
     // Privacy badge lives in the Canvas Lens menu (not the persistent HUD).
     expect(screen.getByRole("button", { name: "Menu" })).toBeInTheDocument();
   });
@@ -87,7 +83,7 @@ describe("App", () => {
   it("shows Notebook Management Screen with Inbox Section when navigating back", async () => {
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     const user = userEvent.setup();
     await openMenuAndClick(user, "Notebook Management");
 
@@ -107,9 +103,8 @@ describe("App", () => {
     await renderApp();
     const user = userEvent.setup();
 
-    await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByTestId("notebook-page-canvas");
+    await openMenuAndClick(user, "Settings");
 
     expect(await screen.findByRole("dialog", { name: "Settings" })).toContainElement(
       screen.getByRole("checkbox", { name: /enable ai features/i })
@@ -117,13 +112,12 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Close Settings" }));
     await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: "Light" }));
+    await user.click(screen.getByRole("menuitem", { name: "Light" }));
 
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("notebook_theme")).toBe("light");
 
-    await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: "Export Notebook Backup" }));
+    await openMenuAndClick(user, "Export");
     const exportDialog = await screen.findByRole("dialog", { name: "Export Notebook Backup" });
     expect(exportDialog).toBeInTheDocument();
     expect(
@@ -135,7 +129,7 @@ describe("App", () => {
     await renderApp();
     const user = userEvent.setup();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await user.keyboard("{Control>}k{/Control}");
     await screen.findByRole("dialog", { name: "Command Palette" });
     await user.type(screen.getByRole("textbox", { name: "Command Palette" }), "New Page in Inbox");
@@ -155,7 +149,7 @@ describe("App", () => {
     const user = userEvent.setup();
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     await screen.findByDisplayValue("Inbox");
     await user.clear(screen.getByDisplayValue("Inbox"));
@@ -198,7 +192,7 @@ describe("App", () => {
 
     const view = render(<App store={failingStore} />);
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
@@ -250,7 +244,7 @@ describe("App", () => {
 
     render(<App store={conflictStore} />);
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
@@ -316,7 +310,7 @@ describe("App", () => {
 
     render(<App store={unavailableStore} />);
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     await screen.findByDisplayValue("Inbox");
     await user.type(screen.getByLabelText("Add a Section"), "Behavioral");
@@ -419,7 +413,7 @@ describe("App", () => {
     const user = userEvent.setup();
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxInput = await screen.findByDisplayValue("Inbox");
     const inboxRow = inboxInput.closest("li");
@@ -435,7 +429,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("notebook-page-canvas")).toBeInTheDocument();
     expect(window.location.pathname).toMatch(
       /^\/sections\/section_inbox\/pages\/page_/
     );
@@ -445,7 +439,7 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
@@ -467,8 +461,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Untitled Page" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Page 1" })).toBeInTheDocument();
-    expect(screen.getByTestId("tldraw-page-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("notebook-page-canvas")).toBeInTheDocument();
   });
 
   it("shows invalid Section and Page URL states without resetting the Notebook", async () => {
@@ -614,7 +607,7 @@ describe("App", () => {
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
@@ -667,7 +660,7 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Canvas Items");
     expect(
       await screen.findByRole("link", {
@@ -681,7 +674,7 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
@@ -738,7 +731,7 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Canvas Items");
     expect(
       await screen.findByDisplayValue("return seen.get(complement);")
@@ -752,7 +745,7 @@ describe("App", () => {
       .mockRejectedValue(new Error("Network is disabled by default."));
     const firstRender = await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (
       await screen.findByDisplayValue("Inbox")
@@ -821,7 +814,7 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Canvas Items");
     expect(
       await screen.findByRole("img", { name: "Updated failover sketch" })
@@ -833,7 +826,7 @@ describe("App", () => {
     const user = userEvent.setup();
     const firstRender = await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (
       await screen.findByDisplayValue("Inbox")
@@ -896,7 +889,7 @@ describe("App", () => {
     window.history.replaceState({}, "", pagePath);
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Canvas Items");
     expect(
       await screen.findByDisplayValue("Queue absorbs write spikes")
@@ -952,7 +945,7 @@ describe("App", () => {
 
     await user.click(within(untitledPageRow).getByRole("button", { name: "Open Page" }));
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
 
     await openMenuAndClick(user, "Notebook Management");
     await user.type(screen.getByLabelText(/Search Canvas Items/), "encoded-handwriting-stroke");
@@ -1120,7 +1113,7 @@ describe("App", () => {
     const firstRender = await renderApp();
     const user = userEvent.setup();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     await openMenuAndClick(user, "Notebook Management");
     const inboxRow = (await screen.findByDisplayValue("Inbox")).closest("li");
 
@@ -1159,9 +1152,9 @@ describe("App", () => {
     );
 
     await renderApp(notebookWithCodeBlock);
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
 
-    await openMenuAndClick(user, "Search Notebook");
+    await openMenuAndClick(user, "Search");
 
     const searchDialog = await screen.findByRole("dialog", { name: "Search Notebook" });
     expect(searchDialog).toBeInTheDocument();
@@ -1185,7 +1178,7 @@ describe("App", () => {
   it("does not show the Assistant Bubble when AI is disabled by default", async () => {
     await renderApp();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
 
     expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
     expect(localStorage.getItem("notebook_ai_enabled")).toBeNull();
@@ -1195,9 +1188,8 @@ describe("App", () => {
     await renderApp();
     const user = userEvent.setup();
 
-    await screen.findByTestId("tldraw-page-canvas");
-    await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByTestId("notebook-page-canvas");
+    await openMenuAndClick(user, "Settings");
 
     const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
     const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
@@ -1215,11 +1207,10 @@ describe("App", () => {
     await renderApp();
     const user = userEvent.setup();
 
-    await screen.findByTestId("tldraw-page-canvas");
+    await screen.findByTestId("notebook-page-canvas");
     expect(screen.getByRole("button", { name: "Open Notebook Assistant" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Menu" }));
-    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await openMenuAndClick(user, "Settings");
 
     const settingsDialog = await screen.findByRole("dialog", { name: "Settings" });
     const aiToggle = within(settingsDialog).getByRole("checkbox", { name: /enable ai features/i });
@@ -1232,25 +1223,4 @@ describe("App", () => {
     expect(localStorage.getItem("notebook_ai_enabled")).toBe("false");
   });
 
-  it("hides the tldraw style panel when no canvas shapes are selected", async () => {
-    vi.mocked(useCanApplySelectionAction).mockReturnValue(false);
-    await renderApp();
-
-    await screen.findByTestId("tldraw-page-canvas");
-
-    expect(
-      screen.queryByTestId("tldraw-default-style-panel")
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows the tldraw style panel when canvas shapes are selected", async () => {
-    vi.mocked(useCanApplySelectionAction).mockReturnValue(true);
-    await renderApp();
-
-    await screen.findByTestId("tldraw-page-canvas");
-
-    expect(
-      screen.getByTestId("tldraw-default-style-panel")
-    ).toBeInTheDocument();
-  });
 });

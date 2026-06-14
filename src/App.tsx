@@ -1,38 +1,17 @@
 import {
   ChangeEvent,
   ClipboardEvent,
-  ComponentProps,
-  createContext,
   FormEvent,
   ReactNode,
-  useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState
 } from "react";
 import {
-  DefaultMainMenu,
-  DefaultMainMenuContent,
-  DefaultStylePanel,
-  Tldraw,
-  iconTypes,
-  useCanApplySelectionAction,
-  useEditor,
-  type TLComponents,
-  type TLUiAssetUrlOverrides,
-  type TLUiStylePanelProps
-} from "tldraw";
-import "tldraw/tldraw.css";
-import {
-  canvasItemIdForShape,
-  pageTldrawCanvasSnapshotFromTldrawShapes,
-  shapeNeedsCanvasItemMeta,
-  toTldrawFreehandDrawingShapeDrafts,
-  toTldrawTextShapeDrafts,
-  type PageTldrawCanvasSnapshot
-} from "./canvas/tldrawTextAdapter";
+  NotebookCanvas,
+  type NotebookCanvasSnapshot
+} from "./canvas/notebookCanvas";
 import {
   buildLocalIndex,
   searchLocalIndex,
@@ -52,7 +31,6 @@ import {
   createSectionId,
   type DiagramCanvasItem,
   type DiagramItemKind,
-  type FreehandDrawingCanvasItem,
   getPage,
   getSection,
   type ImageCanvasItem,
@@ -124,18 +102,6 @@ const applyThemeToDocument = (theme: Theme) => {
   document.documentElement.dataset.theme = getEffectiveTheme(theme);
 };
 
-const LOCAL_TLDRAW_TEXT_ASSET_URLS: TLUiAssetUrlOverrides = {
-  icons: Object.fromEntries(
-    iconTypes.map((iconType) => [
-      iconType,
-      `/tldraw-icons/icon/0_merged.svg#${iconType}`
-    ])
-  ),
-  translations: {
-    en: `data:application/json,${encodeURIComponent("{}")}`
-  }
-};
-
 interface AppProps {
   readonly store?: NotebookStore;
 }
@@ -156,10 +122,6 @@ type ActivePage =
     }
   | { readonly kind: "invalid-section"; readonly sectionId: SectionId }
   | { readonly kind: "invalid-page"; readonly section: Section; readonly pageId: PageId };
-
-type TldrawEditor = Parameters<
-  NonNullable<ComponentProps<typeof Tldraw>["onMount"]>
->[0];
 
 type SaveStatus =
   | { readonly kind: "idle" }
@@ -660,9 +622,9 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
     openPage(result.sectionId, result.pageId);
   };
 
-  const handlePageTextCanvasChange = (
+  const handleNotebookCanvasChange = (
     pageId: PageId,
-    snapshot: PageTldrawCanvasSnapshot
+    snapshot: NotebookCanvasSnapshot
   ) => {
     updateNotebook((currentNotebook) =>
       replacePageCanvasItems(
@@ -932,7 +894,7 @@ export const App = ({ store = defaultNotebookStore }: AppProps) => {
         onImageItemMetadataChange={handleImageItemMetadataChange}
         onLinkCardAdd={handleLinkCardAdd}
         onLinkCardTagsChange={handleLinkCardTagsChange}
-        onPageTextCanvasChange={handlePageTextCanvasChange}
+        onNotebookCanvasChange={handleNotebookCanvasChange}
         onTextCanvasItemTagsChange={handleTextCanvasItemTagsChange}
         searchQuery={searchQuery}
         searchResults={searchResults}
@@ -1320,8 +1282,6 @@ const NotebookPages = ({ notebook, onPageOpen }: NotebookPagesProps) => {
   );
 };
 
-// ── Drawing Screen surface types (module-level for context access) ────────────
-
 type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspector";
 
 type ActiveSurface =
@@ -1330,135 +1290,6 @@ type ActiveSurface =
   | "search"
   | "command-palette"
   | { readonly kind: "modal"; readonly modal: CanvasModalKind };
-
-// Context provided to tldraw component overrides so they can access app state.
-interface DrawingScreenContextValue {
-  readonly section: Section;
-  readonly page: Page;
-  readonly activeSurface: ActiveSurface;
-  readonly theme: Theme;
-  readonly setActiveSurface: (s: ActiveSurface) => void;
-  readonly openCanvasModal: (modal: CanvasModalKind) => void;
-  readonly onNotebookOpen: () => void;
-  readonly onThemeChange: (theme: Theme) => void;
-}
-
-const DrawingScreenCtx = createContext<DrawingScreenContextValue | null>(null);
-
-const useDrawingScreenCtx = (): DrawingScreenContextValue => {
-  const ctx = useContext(DrawingScreenCtx);
-  if (ctx === null) {
-    throw new Error("DrawingScreenCtx used outside DrawingScreen");
-  }
-  return ctx;
-};
-
-interface NotebookMenuActionProps {
-  readonly children: ReactNode;
-  readonly onSelect: () => void;
-}
-
-const NotebookMenuAction = ({ children, onSelect }: NotebookMenuActionProps) => (
-  <button
-    type="button"
-    className="tlui-button tlui-button__menu notebook-menu-actions__item"
-    onClick={onSelect}
-  >
-    <span className="tlui-button__label">{children}</span>
-  </button>
-);
-
-const NotebookMainMenuContent = () => {
-  const {
-    theme,
-    setActiveSurface,
-    openCanvasModal,
-    onNotebookOpen,
-    onThemeChange
-  } = useDrawingScreenCtx();
-  const editor = useEditor();
-  const selectNotebookAction = (action: () => void) => {
-    editor.menus.clearOpenMenus();
-    action();
-  };
-
-  return (
-    <>
-      <DefaultMainMenuContent />
-      <div className="notebook-menu-actions" role="group" aria-label="Notebook actions">
-        <div className="notebook-menu-actions__section">
-          <span className="notebook-menu-actions__label">Notebook</span>
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => setActiveSurface("search"))}>
-            Search Notebook
-          </NotebookMenuAction>
-          <NotebookMenuAction
-            onSelect={() =>
-              selectNotebookAction(() => {
-                setActiveSurface(null);
-                onNotebookOpen();
-              })
-            }
-          >
-            Notebook Management
-          </NotebookMenuAction>
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("inspector"))}>
-            Canvas Items
-          </NotebookMenuAction>
-        </div>
-        <div className="notebook-menu-actions__section">
-          <span className="notebook-menu-actions__label">Theme</span>
-          <div role="group" aria-label="Theme picker">
-            {(["system", "light", "dark"] as const).map((themeOption) => (
-              <button
-                key={themeOption}
-                type="button"
-                className={
-                  theme === themeOption
-                    ? "tlui-button tlui-button__menu notebook-menu-actions__item notebook-menu-actions__item--active"
-                    : "tlui-button tlui-button__menu notebook-menu-actions__item"
-                }
-                aria-pressed={theme === themeOption}
-                onClick={() =>
-                  selectNotebookAction(() => {
-                    onThemeChange(themeOption);
-                    setActiveSurface(null);
-                  })
-                }
-              >
-                <span className="tlui-button__label">
-                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="notebook-menu-actions__section">
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("shortcuts"))}>
-            Keyboard Shortcuts
-          </NotebookMenuAction>
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("settings"))}>
-            Settings
-          </NotebookMenuAction>
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("export"))}>
-            Export Notebook Backup
-          </NotebookMenuAction>
-          <NotebookMenuAction onSelect={() => selectNotebookAction(() => openCanvasModal("import"))}>
-            Import Notebook Export
-          </NotebookMenuAction>
-          <div className="notebook-menu-actions__privacy" aria-label="Notebook privacy mode">
-            Private by Default
-          </div>
-        </div>
-      </div>
-    </>
-  );
-};
-
-const NotebookMainMenu = () => (
-  <DefaultMainMenu>
-    <NotebookMainMenuContent />
-  </DefaultMainMenu>
-);
 
 interface DrawingScreenProps {
   readonly activePage: ActivePage;
@@ -1486,7 +1317,7 @@ interface DrawingScreenProps {
   readonly onImageItemMetadataChange: (canvasItemId: CanvasItemId, caption: string, tagDraft: string) => void;
   readonly onLinkCardAdd: (pageId: PageId, url: string, note: string, tagDraft: string) => void;
   readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
-  readonly onPageTextCanvasChange: (pageId: PageId, snapshot: PageTldrawCanvasSnapshot) => void;
+  readonly onNotebookCanvasChange: (pageId: PageId, snapshot: NotebookCanvasSnapshot) => void;
   readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
   readonly searchQuery: string;
   readonly searchResults: readonly SearchResult[];
@@ -1520,7 +1351,7 @@ const DrawingScreen = ({
   onImageItemMetadataChange,
   onLinkCardAdd,
   onLinkCardTagsChange,
-  onPageTextCanvasChange,
+  onNotebookCanvasChange,
   onTextCanvasItemTagsChange,
   searchQuery,
   searchResults,
@@ -1586,11 +1417,6 @@ const DrawingScreen = ({
 
   const closeCanvasModal = () => setActiveSurface(null);
 
-  const tlComponents = useMemo((): TLComponents => ({
-    StylePanel: SelectionOnlyStylePanel,
-    MainMenu: NotebookMainMenu,
-  }), []);
-
   if (activePage.kind === "invalid-section") {
     return (
       <main className="drawing-screen" role="alert" aria-labelledby="ds-error-title">
@@ -1628,10 +1454,86 @@ const DrawingScreen = ({
       </main>
     );
   }
-  const { page, section } = activePage;
+  const { page } = activePage;
   const pageTextItems = notebook.canvasItems.filter(
     (item): item is TextCanvasItem => item.pageId === page.id && item.type === "text"
   );
+
+  const notebookCanvasActions = [
+    {
+      id: "notebook-management",
+      label: "Notebook Management",
+      group: "notebook" as const,
+      onSelect: onNotebookOpen
+    },
+    {
+      id: "drawer",
+      label: isDrawerOpen ? "Close Drawer" : "Open Drawer",
+      group: "notebook" as const,
+      active: isDrawerOpen,
+      onSelect: () => setActiveSurface((surface) => (surface === "drawer" ? null : "drawer"))
+    },
+    {
+      id: "search",
+      label: "Search",
+      group: "notebook" as const,
+      active: isSearchOpen,
+      onSelect: () => setActiveSurface("search")
+    },
+    {
+      id: "inspector",
+      label: "Canvas Items",
+      group: "notebook" as const,
+      active: activeModal === "inspector",
+      onSelect: () => openCanvasModal("inspector")
+    },
+    {
+      id: "light-theme",
+      label: "Light",
+      group: "theme" as const,
+      active: theme === "light",
+      onSelect: () => onThemeChange("light")
+    },
+    {
+      id: "dark-theme",
+      label: "Dark",
+      group: "theme" as const,
+      active: theme === "dark",
+      onSelect: () => onThemeChange("dark")
+    },
+    {
+      id: "system-theme",
+      label: "System",
+      group: "theme" as const,
+      active: theme === "system",
+      onSelect: () => onThemeChange("system")
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      group: "tools" as const,
+      onSelect: () => openCanvasModal("settings")
+    },
+    {
+      id: "export",
+      label: "Export",
+      group: "tools" as const,
+      onSelect: () => openCanvasModal("export")
+    },
+    {
+      id: "import",
+      label: "Import",
+      group: "tools" as const,
+      onSelect: () => openCanvasModal("import")
+    },
+    {
+      id: "shortcuts",
+      label: "Shortcuts",
+      group: "tools" as const,
+      onSelect: () => openCanvasModal("shortcuts")
+    }
+  ];
+
   const commandActions: readonly CommandAction[] = [
     {
       id: "toggle-drawer",
@@ -1703,16 +1605,6 @@ const DrawingScreen = ({
   ];
 
   return (
-    <DrawingScreenCtx.Provider value={{
-      section,
-      page,
-      activeSurface,
-      theme,
-      setActiveSurface,
-      openCanvasModal,
-      onNotebookOpen,
-      onThemeChange,
-    }}>
       <main className="drawing-screen" aria-labelledby="ds-notebook-title">
         <h1 id="ds-notebook-title" className="drawing-screen__sr-title">
           {notebook.title}
@@ -1720,13 +1612,14 @@ const DrawingScreen = ({
         <h2 className="sr-only">{page.title}</h2>
         <div className="drawing-screen__body">
           <div className="drawing-screen__canvas-area">
-            <PageTextCanvas
+            <NotebookCanvas
               page={page}
-              notebook={notebook}
+              canvasItems={notebook.canvasItems}
+              canvasRegions={notebook.canvasRegions}
               highlightedCanvasItemId={highlightedCanvasItemId}
               theme={effectiveTheme}
-              tlComponents={tlComponents}
-              onPageTextCanvasChange={onPageTextCanvasChange}
+              actions={notebookCanvasActions}
+              onCanvasChange={onNotebookCanvasChange}
             />
           </div>
           <NotebookDrawer
@@ -1825,7 +1718,6 @@ const DrawingScreen = ({
         />
         {aiEnabled ? <AssistantBubble /> : null}
       </main>
-    </DrawingScreenCtx.Provider>
   );
 };
 
@@ -2169,175 +2061,6 @@ const SearchOverlay = ({
           )}
         </div>
       </div>
-    </div>
-  );
-};
-
-const SelectionOnlyStylePanel = (props: TLUiStylePanelProps) => {
-  const hasSelection = useCanApplySelectionAction();
-  if (!hasSelection) return null;
-  return <DefaultStylePanel {...props} />;
-};
-
-const PAGE_TEXT_CANVAS_COMPONENTS: TLComponents = {
-  StylePanel: SelectionOnlyStylePanel
-};
-
-interface PageTextCanvasProps {
-  readonly page: Page;
-  readonly notebook: Notebook;
-  readonly highlightedCanvasItemId: CanvasItemId | null;
-  readonly theme: EffectiveTheme;
-  readonly tlComponents?: TLComponents;
-  readonly onEditorReady?: (editor: TldrawEditor | null) => void;
-  readonly onPageTextCanvasChange: (
-    pageId: PageId,
-    snapshot: PageTldrawCanvasSnapshot
-  ) => void;
-}
-
-const PageTextCanvas = ({
-  page,
-  notebook,
-  highlightedCanvasItemId,
-  theme,
-  tlComponents = PAGE_TEXT_CANVAS_COMPONENTS,
-  onEditorReady,
-  onPageTextCanvasChange
-}: PageTextCanvasProps) => {
-  const saveTimeoutRef = useRef<number | undefined>(undefined);
-  const editorRef = useRef<TldrawEditor | null>(null);
-  const initialTextItems = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is TextCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "text"
-      ),
-    [notebook.canvasItems, page.id]
-  );
-  const initialRegions = useMemo(
-    () => notebook.canvasRegions.filter((region) => region.pageId === page.id),
-    [notebook.canvasRegions, page.id]
-  );
-  const initialFreehandDrawingItems = useMemo(
-    () =>
-      notebook.canvasItems.filter(
-        (canvasItem): canvasItem is FreehandDrawingCanvasItem =>
-          canvasItem.pageId === page.id && canvasItem.type === "freehand-drawing"
-      ),
-    [notebook.canvasItems, page.id]
-  );
-  const highlightedRegion = useMemo(
-    () =>
-      highlightedCanvasItemId === null
-        ? null
-        : (initialRegions.find(
-            (region) => region.canvasItemId === highlightedCanvasItemId
-          ) ?? null),
-    [highlightedCanvasItemId, initialRegions]
-  );
-
-  useEffect(() => {
-    editorRef.current?.user?.updateUserPreferences({ colorScheme: theme });
-  }, [theme]);
-
-  const handleMount = useCallback(
-    (editor: TldrawEditor) => {
-      const drafts = toTldrawTextShapeDrafts(initialTextItems, initialRegions);
-      const drawingDrafts = toTldrawFreehandDrawingShapeDrafts(
-        initialFreehandDrawingItems
-      );
-      editorRef.current = editor;
-      editor.user?.updateUserPreferences({ colorScheme: theme });
-      onEditorReady?.(editor);
-
-      if (drafts.length > 0 || drawingDrafts.length > 0) {
-        editor.createShapes([...drafts, ...drawingDrafts]);
-      }
-
-      editor.setCurrentTool("text");
-
-      const persistTextShapes = () => {
-        const shapes = editor.getCurrentPageShapes();
-        const boundsByShapeId = new Map<string, ReturnType<TldrawEditor["getShapePageBounds"]>>(
-          shapes.map((shape) => [shape.id, editor.getShapePageBounds(shape)])
-        );
-
-        for (const shape of shapes) {
-          if (shapeNeedsCanvasItemMeta(shape)) {
-            editor.updateShape({
-              id: shape.id,
-              type: shape.type,
-              meta: {
-                ...shape.meta,
-                canvasItemId: canvasItemIdForShape(shape)
-              }
-            });
-          }
-        }
-
-        onPageTextCanvasChange(
-          page.id,
-          pageTldrawCanvasSnapshotFromTldrawShapes(page.id, shapes, (shape) =>
-            boundsByShapeId.get(shape.id)
-          )
-        );
-      };
-
-      const queuePersist = () => {
-        window.clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = window.setTimeout(persistTextShapes, 250);
-      };
-
-      const unsubscribe = editor.store.listen(queuePersist, {
-        source: "user",
-        scope: "document"
-      });
-
-      return () => {
-        window.clearTimeout(saveTimeoutRef.current);
-        editorRef.current = null;
-        onEditorReady?.(null);
-        unsubscribe();
-      };
-    },
-    [
-      initialFreehandDrawingItems,
-      initialRegions,
-      initialTextItems,
-      onEditorReady,
-      onPageTextCanvasChange,
-      page.id,
-      theme
-    ]
-  );
-
-  return (
-    <div
-      className="tldraw-canvas"
-      data-testid="tldraw-page-canvas"
-      aria-label={`${page.title} tldraw text canvas`}
-    >
-      {highlightedRegion !== null ? (
-        <div
-          className="canvas-region-highlight"
-          role="status"
-          aria-label="Highlighted Canvas Region"
-          style={{
-            height: `${highlightedRegion.bounds.height}px`,
-            left: `${highlightedRegion.bounds.x}px`,
-            top: `${highlightedRegion.bounds.y}px`,
-            width: `${highlightedRegion.bounds.width}px`
-          }}
-        />
-      ) : null}
-      <Tldraw
-        assetUrls={LOCAL_TLDRAW_TEXT_ASSET_URLS}
-        autoFocus
-        components={tlComponents}
-        initialState="text"
-        onMount={handleMount}
-      />
     </div>
   );
 };
@@ -3417,7 +3140,7 @@ const ShortcutsModalContent = () => (
         </tr>
         <tr>
           <th scope="row">Canvas shortcuts</th>
-          <td>tldraw keeps its native canvas shortcuts available inside the editor.</td>
+          <td>Excalidraw keeps its native canvas shortcuts available inside the editor.</td>
         </tr>
       </tbody>
     </table>
