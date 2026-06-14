@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCanApplySelectionAction } from "tldraw";
 import { App } from "./App";
 import {
   addSection,
@@ -35,6 +36,7 @@ describe("App", () => {
     databaseName = `app-test-${databaseSequence}`;
     window.history.replaceState({}, "", "/");
     localStorage.clear();
+    vi.mocked(useCanApplySelectionAction).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -1227,5 +1229,27 @@ describe("App", () => {
 
     expect(screen.queryByRole("button", { name: "Open Notebook Assistant" })).not.toBeInTheDocument();
     expect(localStorage.getItem("notebook_ai_enabled")).toBe("false");
+  });
+
+  it("hides the tldraw style panel when no canvas shapes are selected", async () => {
+    vi.mocked(useCanApplySelectionAction).mockReturnValue(false);
+    await renderApp();
+
+    await screen.findByTestId("tldraw-page-canvas");
+
+    expect(
+      screen.queryByTestId("tldraw-default-style-panel")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the tldraw style panel when canvas shapes are selected", async () => {
+    vi.mocked(useCanApplySelectionAction).mockReturnValue(true);
+    await renderApp();
+
+    await screen.findByTestId("tldraw-page-canvas");
+
+    expect(
+      screen.getByTestId("tldraw-default-style-panel")
+    ).toBeInTheDocument();
   });
 });
