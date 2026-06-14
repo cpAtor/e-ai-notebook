@@ -1165,6 +1165,16 @@ html[data-theme="dark"] .link-card-list a {
   padding: 1rem;
 }
 
+.canvas-modal--scrollable {
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+}
+
+.canvas-modal--scrollable .canvas-modal__body {
+  overflow-y: auto;
+}
+
 .canvas-modal__header {
   display: flex;
   align-items: center;
@@ -1186,6 +1196,11 @@ html[data-theme="dark"] .link-card-list a {
 .canvas-modal__content {
   display: grid;
   gap: 1rem;
+}
+
+.item-inspector {
+  display: grid;
+  gap: 1.5rem;
 }
 
 .shortcuts-table {

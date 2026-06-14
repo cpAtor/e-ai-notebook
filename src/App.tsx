@@ -1399,7 +1399,6 @@ const DrawingScreen = ({
   onSearchResultOpen
 }: DrawingScreenProps) => {
   const [currentEditor, setCurrentEditor] = useState<TldrawEditor | null>(null);
-  const [showPanels, setShowPanels] = useState(false);
   const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<CanvasModalKind | null>(null);
@@ -1692,8 +1691,7 @@ const DrawingScreen = ({
         <button
           type="button"
           className="drawing-screen__items-btn"
-          onClick={() => setShowPanels((prev) => !prev)}
-          aria-expanded={showPanels}
+          onClick={() => openCanvasModal("inspector")}
         >
           Canvas Items
         </button>
@@ -1732,41 +1730,6 @@ const DrawingScreen = ({
           }}
           onClose={() => setIsDrawerOpen(false)}
         />
-        {showPanels ? (
-          <div className="drawing-screen__panels">
-            <TextCanvasItemTags
-              pageTextItems={pageTextItems}
-              onTagsChange={onTextCanvasItemTagsChange}
-            />
-            <PageLinkCards
-              page={page}
-              notebook={notebook}
-              onLinkCardAdd={onLinkCardAdd}
-              onLinkCardTagsChange={onLinkCardTagsChange}
-            />
-            <PageImageItems
-              page={page}
-              notebook={notebook}
-              highlightedCanvasItemId={highlightedCanvasItemId}
-              onImageItemAdd={onImageItemAdd}
-              onImageItemMetadataChange={onImageItemMetadataChange}
-            />
-            <PageDiagramItems
-              page={page}
-              notebook={notebook}
-              highlightedCanvasItemId={highlightedCanvasItemId}
-              onDiagramItemAdd={onDiagramItemAdd}
-              onDiagramItemChange={onDiagramItemChange}
-            />
-            <PageCodeBlocks
-              page={page}
-              notebook={notebook}
-              highlightedCanvasItemId={highlightedCanvasItemId}
-              onCodeBlockAdd={onCodeBlockAdd}
-              onCodeBlockChange={onCodeBlockChange}
-            />
-          </div>
-        ) : null}
       </div>
       <CommandPalette
         actions={commandActions}
@@ -1808,6 +1771,28 @@ const DrawingScreen = ({
         onClose={closeCanvasModal}
       >
         <NotebookImportModalContent onImport={onNotebookImport} status={backupStatus} />
+      </CanvasModal>
+      <CanvasModal
+        isOpen={activeModal === "inspector"}
+        title="Canvas Items"
+        onClose={closeCanvasModal}
+        scrollable
+      >
+        <ItemInspectorContent
+          page={page}
+          notebook={notebook}
+          pageTextItems={pageTextItems}
+          highlightedCanvasItemId={highlightedCanvasItemId}
+          onTextCanvasItemTagsChange={onTextCanvasItemTagsChange}
+          onLinkCardAdd={onLinkCardAdd}
+          onLinkCardTagsChange={onLinkCardTagsChange}
+          onImageItemAdd={onImageItemAdd}
+          onImageItemMetadataChange={onImageItemMetadataChange}
+          onDiagramItemAdd={onDiagramItemAdd}
+          onDiagramItemChange={onDiagramItemChange}
+          onCodeBlockAdd={onCodeBlockAdd}
+          onCodeBlockChange={onCodeBlockChange}
+        />
       </CanvasModal>
       <CanvasToastArea
         saveStatus={saveStatus}
@@ -3114,6 +3099,74 @@ interface LocalSearchProps {
   readonly onResultOpen: (result: SearchResult) => void;
 }
 
+interface ItemInspectorContentProps {
+  readonly page: Page;
+  readonly notebook: Notebook;
+  readonly pageTextItems: readonly TextCanvasItem[];
+  readonly highlightedCanvasItemId: CanvasItemId | null;
+  readonly onTextCanvasItemTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onLinkCardAdd: (pageId: PageId, url: string, note: string, tagDraft: string) => void;
+  readonly onLinkCardTagsChange: (canvasItemId: CanvasItemId, tagDraft: string) => void;
+  readonly onImageItemAdd: (pageId: PageId, dataUrl: string, mediaType: string, caption: string, tagDraft: string) => void;
+  readonly onImageItemMetadataChange: (canvasItemId: CanvasItemId, caption: string, tagDraft: string) => void;
+  readonly onDiagramItemAdd: (pageId: PageId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onDiagramItemChange: (canvasItemId: CanvasItemId, kind: DiagramItemKind, label: string, tagDraft: string) => void;
+  readonly onCodeBlockAdd: (pageId: PageId, code: string, tagDraft: string) => void;
+  readonly onCodeBlockChange: (canvasItemId: CanvasItemId, code: string, tagDraft: string) => void;
+}
+
+const ItemInspectorContent = ({
+  page,
+  notebook,
+  pageTextItems,
+  highlightedCanvasItemId,
+  onTextCanvasItemTagsChange,
+  onLinkCardAdd,
+  onLinkCardTagsChange,
+  onImageItemAdd,
+  onImageItemMetadataChange,
+  onDiagramItemAdd,
+  onDiagramItemChange,
+  onCodeBlockAdd,
+  onCodeBlockChange
+}: ItemInspectorContentProps) => (
+  <div className="item-inspector">
+    <TextCanvasItemTags
+      pageTextItems={pageTextItems}
+      onTagsChange={onTextCanvasItemTagsChange}
+    />
+    <PageLinkCards
+      page={page}
+      notebook={notebook}
+      onLinkCardAdd={onLinkCardAdd}
+      onLinkCardTagsChange={onLinkCardTagsChange}
+    />
+    <PageImageItems
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onImageItemAdd={onImageItemAdd}
+      onImageItemMetadataChange={onImageItemMetadataChange}
+    />
+    <PageDiagramItems
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onDiagramItemAdd={onDiagramItemAdd}
+      onDiagramItemChange={onDiagramItemChange}
+    />
+    <PageCodeBlocks
+      page={page}
+      notebook={notebook}
+      highlightedCanvasItemId={highlightedCanvasItemId}
+      onCodeBlockAdd={onCodeBlockAdd}
+      onCodeBlockChange={onCodeBlockChange}
+    />
+  </div>
+);
+
+
+
 const LocalSearch = ({
   query,
   results,
@@ -3174,7 +3227,7 @@ interface CommandAction {
   readonly run: () => void;
 }
 
-type CanvasModalKind = "shortcuts" | "settings" | "export" | "import";
+type CanvasModalKind = "shortcuts" | "settings" | "export" | "import" | "inspector";
 
 interface CommandPaletteProps {
   readonly actions: readonly CommandAction[];
@@ -3328,10 +3381,11 @@ interface CanvasModalProps {
   readonly children: ReactNode;
   readonly isOpen: boolean;
   readonly onClose: () => void;
+  readonly scrollable?: boolean;
   readonly title: string;
 }
 
-const CanvasModal = ({ children, isOpen, onClose, title }: CanvasModalProps) => {
+const CanvasModal = ({ children, isOpen, onClose, scrollable, title }: CanvasModalProps) => {
   if (!isOpen) {
     return null;
   }
@@ -3339,7 +3393,7 @@ const CanvasModal = ({ children, isOpen, onClose, title }: CanvasModalProps) => 
   return (
     <div className="canvas-modal-overlay" onClick={onClose}>
       <div
-        className="canvas-modal"
+        className={scrollable ? "canvas-modal canvas-modal--scrollable" : "canvas-modal"}
         role="dialog"
         aria-modal="true"
         aria-label={title}
